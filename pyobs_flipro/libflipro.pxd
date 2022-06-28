@@ -20,4 +20,6 @@ cdef extern from "../lib/libflipro.h":
     LIBFLIPRO_API FPROCam_GetCameraList(FPRODEVICEINFO *pDeviceInfo, uint32_t *pNumDevices)
     LIBFLIPRO_API FPROCam_Open(FPRODEVICEINFO *pDevInfo, int32_t *pHandle)
     LIBFLIPRO_API FPROCam_Close(int32_t iHandle)
+    LIBFLIPRO_API FPROFrame_GetImageArea(int32_t iHandle, uint32_t *pColOffset, uint32_t *pRowOffset, uint32_t *pWidth,
+                                         uint32_t *pHeight);
 

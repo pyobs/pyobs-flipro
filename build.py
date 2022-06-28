@@ -18,7 +18,7 @@ def build() -> None:
             "pyobs_flipro.fliprodriver",
             ["pyobs_flipro/fliprodriver.pyx"],
             library_dirs=["lib/"],
-            libraries=["libflipro", "cfitsio"],
+            libraries=["libflipro", "cfitsio", "usb-1.0"],
             include_dirs=[numpy.get_include()],
             extra_compile_args=["-fPIC"],
         )

@@ -15,8 +15,15 @@ cdef class DeviceInfo:
     cdef FPRODEVICEINFO obj
     def __init__(self, obj):
         self.obj = obj
-    def __getattr__(self, item):
-        return getattr(self.obj, item)
+
+    def __decode(self, w):
+        b = bytes(w)
+        b = b[:b.index(b"\x00")]
+        return b.decode('utf-8')
+
+    @property
+    def friendly_name(self):
+        return self.__decode(self.obj.cFriendlyName)
 
 
 cdef class FliProDriver:
@@ -55,3 +62,9 @@ cdef class FliProDriver:
     def close(self):
         cdef LIBFLIPRO_API success
         success = FPROCam_Close(self._handle)
+
+    def get_image_area(self) -> Tuple[int, int, int, int]:
+        cdef LIBFLIPRO_API success
+        cdef uint32_t pColOffset, pRowOffset, pWidth, pHeight
+        success = FPROFrame_GetImageArea(self._handle, &pColOffset, &pRowOffset, &pWidth, &pHeight)
+        return pColOffset, pRowOffset, pWidth, pHeight
