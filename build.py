@@ -15,10 +15,10 @@ def build() -> None:
 
     extensions = [
         Extension(
-            "pyobs_fli.flidriver",
-            ["pyobs_fli/flidriver.pyx"],
+            "pyobs_flipro.fliprodriver",
+            ["pyobs_flipro/fliprodriver.pyx"],
             library_dirs=["lib/"],
-            libraries=["fli", "cfitsio"],
+            libraries=["libflipro", "cfitsio"],
             include_dirs=[numpy.get_include()],
             extra_compile_args=["-fPIC"],
         )
