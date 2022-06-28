@@ -68,3 +68,19 @@ cdef class FliProDriver:
         cdef uint32_t pColOffset, pRowOffset, pWidth, pHeight
         success = FPROFrame_GetImageArea(self._handle, &pColOffset, &pRowOffset, &pWidth, &pHeight)
         return pColOffset, pRowOffset, pWidth, pHeight
+
+    def set_image_area(self, col_offset, row_offset, width, height):
+        cdef LIBFLIPRO_API success
+        success = FPROFrame_SetImageArea(self._handle, col_offset, row_offset, width, height)
+
+    def get_exposure_time(self) -> int:
+        cdef LIBFLIPRO_API success
+        cdef uint64_t pExposureTime, pDelay
+        cdef bool immediately
+        success = FPROCtrl_GetExposure(self._handle, &pExposureTime, &pDelay, &immediately)
+        return pExposureTime
+
+    def set_exposure_time(self, exptime_ns: int):
+        cdef LIBFLIPRO_API success
+        cdef bool immediately = False
+        success = FPROCtrl_SetExposure(self._handle, exptime_ns, 0, immediately)
