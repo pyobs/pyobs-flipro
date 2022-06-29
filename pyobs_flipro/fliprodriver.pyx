@@ -3,6 +3,7 @@
 from collections import namedtuple
 from enum import Enum
 from typing import Tuple, List
+from libc.stdlib cimport malloc, free
 
 import numpy as np
 cimport numpy as np
@@ -84,3 +85,35 @@ cdef class FliProDriver:
         cdef LIBFLIPRO_API success
         cdef bool immediately = False
         success = FPROCtrl_SetExposure(self._handle, exptime_ns, 0, immediately)
+
+    def get_frame_size(self):
+        # calculate size of the frame to retrieve from camera
+        return FPROFrame_ComputeFrameSize(self._handle)
+
+    def start_exposure(self):
+        # start exposure
+        success = FPROFrame_CaptureStart(self._handle, 1)
+
+    def read_exposure(self, frame_size):
+        # allocate memory
+        cdef uint32_t c_frame_size = frame_size
+        cdef uint8_t *frame_data = <uint8_t *> malloc(c_frame_size * sizeof(uint8_t))
+        cdef FPROUNPACKEDIMAGES buffers
+        cdef FPROUNPACKEDSTATS stats
+        cdef LIBFLIPRO_API success
+
+        # request merged image
+        buffers.pMergedImage = NULL
+        buffers.bMergedImageRequest = True
+
+        # read frame
+        success = FPROFrame_GetVideoFrameUnpacked(self._handle, frame_data, &c_frame_size, 1000, &buffers, &stats)
+
+        # clean up
+        free(frame_data)
+
+    def stop_exposure(self):
+        # start exposure
+        success = FPROFrame_CaptureStop(self._handle)
+
+
