@@ -1,4 +1,4 @@
-# distutils: language = c++
+# distutils: language = c
 
 from collections import namedtuple
 from enum import Enum
@@ -8,6 +8,7 @@ from libc.stdlib cimport malloc, free
 import numpy as np
 cimport numpy as np
 np.import_array()
+
 
 from libflipro cimport *
 
@@ -79,12 +80,16 @@ cdef class FliProDriver:
         cdef uint64_t pExposureTime, pDelay
         cdef bool immediately
         success = FPROCtrl_GetExposure(self._handle, &pExposureTime, &pDelay, &immediately)
+        print('FPROCtrl_GetExposure', success)
+        print(pExposureTime, pDelay, immediately)
         return pExposureTime
 
     def set_exposure_time(self, exptime_ns: int):
         cdef LIBFLIPRO_API success
         cdef bool immediately = False
+        print(exptime_ns)
         success = FPROCtrl_SetExposure(self._handle, exptime_ns, 0, immediately)
+        print('FPROCtrl_SetExposure', success)
 
     def get_frame_size(self):
         # calculate size of the frame to retrieve from camera
@@ -93,24 +98,38 @@ cdef class FliProDriver:
     def start_exposure(self):
         # start exposure
         success = FPROFrame_CaptureStart(self._handle, 1)
+        print('start', success)
 
     def read_exposure(self, frame_size):
         # allocate memory
         cdef uint32_t c_frame_size = frame_size
         cdef uint8_t *frame_data = <uint8_t *> malloc(c_frame_size * sizeof(uint8_t))
+        print(frame_data[0])
+        print(frame_data[1])
         cdef FPROUNPACKEDIMAGES buffers
         cdef FPROUNPACKEDSTATS stats
         cdef LIBFLIPRO_API success
 
         # request merged image
         buffers.pMergedImage = NULL
-        buffers.bMergedImageRequest = True
+        buffers.pMetaData = NULL
+        buffers.pHighImage = NULL
+        buffers.pLowImage = NULL
+        buffers.bMergedImageRequest = False
+        buffers.bMetaDataRequest = False
+        buffers.bHighImageRequest = False
+        buffers.bLowImageRequest = False
+        print(buffers.bMergedImageRequest)
+        print(buffers.bMetaDataRequest)
 
         # read frame
+        print('1', c_frame_size)
         success = FPROFrame_GetVideoFrameUnpacked(self._handle, frame_data, &c_frame_size, 1000, &buffers, &stats)
+        print('2')
 
         # clean up
         free(frame_data)
+        FPROFrame_FreeUnpackedBuffers(&buffers)
 
     def stop_exposure(self):
         # start exposure
