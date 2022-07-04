@@ -151,3 +151,32 @@ cdef class FliProDriver:
     def stop_exposure(self):
         # start exposure
         success = FPROFrame_CaptureStop(self._handle)
+
+    def get_sensor_temperature(self):
+        cdef LIBFLIPRO_API success
+        cdef int32_t pTemp
+        success = FPROCtrl_GetSensorTemperature(self._handle, &pTemp)
+        return pTemp
+
+    def get_temperatures(self):
+        cdef LIBFLIPRO_API success
+        cdef double pAmbientTemp, pBaseTemp, pCoolerTemp
+        success = FPROCtrl_GetTemperatures(self._handle, &pAmbientTemp, &pBaseTemp, &pCoolerTemp)
+        return pAmbientTemp, pBaseTemp, pCoolerTemp
+
+    def get_temperature_set_point(self):
+        cdef LIBFLIPRO_API success
+        cdef double pSetPoint
+        success = FPROCtrl_GetTemperatureSetPoint(self._handle, &pSetPoint)
+        return pSetPoint
+
+    def set_temperature_set_point(self, temp):
+        cdef LIBFLIPRO_API success
+        cdef double dblSetPoint = temp
+        success = FPROCtrl_SetTemperatureSetPoint(self._handle, dblSetPoint)
+
+    def get_cooler_duty_cycle(self):
+        cdef LIBFLIPRO_API success
+        cdef uint32_t pDutyCycle
+        success = FPROCtrl_GetCoolerDutyCycle(self._handle, &pDutyCycle)
+        return pDutyCycle

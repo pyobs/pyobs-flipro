@@ -92,4 +92,9 @@ cdef extern from "../lib/libflipro.h":
     LIBFLIPRO_API FPROFrame_GetVideoFrameUnpacked(int32_t iHandle, uint8_t *pFrameData, uint32_t *pSize,
                                                   uint32_t uiTimeoutMS, FPROUNPACKEDIMAGES *pUPBuffers,
                                                   FPROUNPACKEDSTATS *pStats);
-
+    LIBFLIPRO_API FPROCtrl_GetSensorTemperature(int32_t iHandle, int32_t *pTemp);
+    LIBFLIPRO_API FPROCtrl_GetTemperatures(int32_t iHandle, double *pAmbientTemp, double *pBaseTemp,
+                                           double *pCoolerTemp);
+    LIBFLIPRO_API FPROCtrl_GetTemperatureSetPoint(int32_t iHandle, double *pSetPoint);
+    LIBFLIPRO_API FPROCtrl_SetTemperatureSetPoint(int32_t iHandle, double dblSetPoint);
+    LIBFLIPRO_API FPROCtrl_GetCoolerDutyCycle(int32_t iHandle, uint32_t *pDutyCycle);
