@@ -65,14 +65,12 @@ cdef extern from "../lib/libflipro.h":
         FPRO_MERGEALGO eMergAlgo
 
     ctypedef struct FPROUNPACKEDSTATS:
-        FPRO_CROP cropRect
-        bool      bRequestCrop
-        FPROPLANESTATS statsLowImage
-        bool     bLowRequest
-        FPROPLANESTATS statsHighImage
-        bool     bHighRequest
-        FPROPLANESTATS statsMergedImage
-        bool     bMergedRequest
+        FPROPLANESTATS statsLowImage;
+        bool     bLowRequest;
+        FPROPLANESTATS statsHighImage;
+        bool     bHighRequest;
+        FPROPLANESTATS statsMergedImage;
+        bool     bMergedRequest;
     
     LIBFLIPRO_API FPROCam_GetAPIVersion(wchar_t *pVersion, uint32_t uiLength)
     LIBFLIPRO_API FPROCam_GetCameraList(FPRODEVICEINFO *pDeviceInfo, uint32_t *pNumDevices)

@@ -4,6 +4,7 @@ from collections import namedtuple
 from enum import Enum
 from typing import Tuple, List
 from libc.stdlib cimport malloc, free
+from libc.string cimport memcpy
 
 import numpy as np
 cimport numpy as np
@@ -101,38 +102,52 @@ cdef class FliProDriver:
         print('start', success)
 
     def read_exposure(self, frame_size):
+        cdef LIBFLIPRO_API success
+
         # allocate memory
         cdef uint32_t c_frame_size = frame_size
         cdef uint8_t *frame_data = <uint8_t *> malloc(c_frame_size * sizeof(uint8_t))
-        print(frame_data[0])
-        print(frame_data[1])
-        cdef FPROUNPACKEDIMAGES buffers
-        cdef FPROUNPACKEDSTATS stats
-        cdef LIBFLIPRO_API success
 
-        # request merged image
+        # create buffers, only request merged image
+        cdef FPROUNPACKEDIMAGES buffers
         buffers.pMergedImage = NULL
         buffers.pMetaData = NULL
         buffers.pHighImage = NULL
         buffers.pLowImage = NULL
-        buffers.bMergedImageRequest = False
+        buffers.bMergedImageRequest = True
         buffers.bMetaDataRequest = False
         buffers.bHighImageRequest = False
         buffers.bLowImageRequest = False
-        print(buffers.bMergedImageRequest)
-        print(buffers.bMetaDataRequest)
+
+        # create stats, don't request anything
+        cdef FPROUNPACKEDSTATS stats
+        stats.bLowRequest = False
+        stats.bHighRequest = False
+        stats.bMergedRequest = False
+
+        # get image size
+        _, _, width, height = self.get_image_area()
 
         # read frame
-        print('1', c_frame_size)
-        success = FPROFrame_GetVideoFrameUnpacked(self._handle, frame_data, &c_frame_size, 1000, &buffers, &stats)
-        print('2')
+        success = FPROFrame_GetVideoFrameUnpacked(self._handle, frame_data, &c_frame_size, 100, &buffers, &stats)
 
-        # clean up
+        # check size
+        print(width * height * sizeof(uint16_t), buffers.uiMergedBufferSize)
+        if width * height * sizeof(uint16_t) != buffers.uiMergedBufferSize:
+            raise ValueError('Invalid image size.')
+
+        # create numpy array of given dimensions
+        cdef np.ndarray data = np.empty((height, width), dtype=np.ushort)
+
+        # get pointer to data and copy data
+        cdef void* row_data = <void*> data.data
+        memcpy(<void*> data.data, <void *>buffers.pMergedImage, buffers.uiMergedBufferSize)
+
+        # clean up and return image
         free(frame_data)
         FPROFrame_FreeUnpackedBuffers(&buffers)
+        return data
 
     def stop_exposure(self):
         # start exposure
         success = FPROFrame_CaptureStop(self._handle)
-
-
