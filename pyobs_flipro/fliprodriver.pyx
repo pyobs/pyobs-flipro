@@ -28,11 +28,15 @@ cdef class DeviceInfo:
     def friendly_name(self):
         return self.__decode(self.obj.cFriendlyName)
 
+    @property
+    def serial_number(self):
+        return self.__decode(self.obj.cSerialNo)
+
 
 cdef class FliProDriver:
     """Wrapper for the FLI driver."""
 
-    cdef FPRODEVICEINFO _device_info
+    cdef FPRODEVICEINFO device
     cdef int32_t _handle
 
     @staticmethod
@@ -55,12 +59,12 @@ cdef class FliProDriver:
         return devices
 
     def __init__(self, device_info: DeviceInfo):
-        self._device_info = device_info.obj
+        self.device = device_info.obj
         self._handle = 0
 
     def open(self):
         cdef LIBFLIPRO_API success
-        success = FPROCam_Open(&self._device_info, &self._handle)
+        success = FPROCam_Open(&self.device, &self._handle)
 
     def close(self):
         cdef LIBFLIPRO_API success
