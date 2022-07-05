@@ -131,6 +131,9 @@ cdef class FliProDriver:
 
         # get image size
         _, _, width, height = self.get_image_area()
+        xbin, ybin = self.get_binning()
+        width = width // xbin
+        height = height // ybin
 
         # read frame
         success = FPROFrame_GetVideoFrameUnpacked(self._handle, frame_data, &c_frame_size, 100, &buffers, &stats)
@@ -189,3 +192,11 @@ cdef class FliProDriver:
         cdef uint32_t pDutyCycle
         success = FPROCtrl_GetCoolerDutyCycle(self._handle, &pDutyCycle)
         return pDutyCycle
+
+    def get_binning(self):
+        cdef uint32_t pXBin, pYBin
+        success = FPROSensor_GetBinning(self._handle, &pXBin, &pYBin)
+        return pXBin, pYBin
+
+    def set_binning(self, x, y):
+        success = FPROSensor_SetBinning(self._handle, x, y)

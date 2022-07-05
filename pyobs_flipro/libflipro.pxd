@@ -99,3 +99,5 @@ cdef extern from "../lib/libflipro.h":
     LIBFLIPRO_API FPROCtrl_SetTemperatureSetPoint(int32_t iHandle, double dblSetPoint);
     LIBFLIPRO_API FPROCtrl_GetCoolerDutyCycle(int32_t iHandle, uint32_t *pDutyCycle);
     LIBFLIPRO_API FPROFrame_IsAvailable(int32_t iHandle, bool *pAvailable);
+    LIBFLIPRO_API FPROSensor_GetBinning(int32_t iHandle, uint32_t *pXBin, uint32_t *pYBin)
+    LIBFLIPRO_API FPROSensor_SetBinning(int32_t iHandle, uint32_t uiXBin, uint32_t uiYBin);

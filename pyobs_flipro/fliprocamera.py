@@ -33,6 +33,10 @@ class FliProCamera(BaseCamera, ICamera, IAbortable):
         self._driver: Optional[FliProDriver] = None
         self._device: Optional[DeviceInfo] = None
 
+        # window and binning
+        self._window = (0, 0, 0, 0)
+        self._binning = (1, 1)
+
     async def open(self) -> None:
         """Open module."""
         await BaseCamera.open(self)
@@ -51,6 +55,10 @@ class FliProCamera(BaseCamera, ICamera, IAbortable):
             self._driver.open()
         except ValueError as e:
             raise ValueError("Could not open FLIPRO camera: %s", e)
+
+        # get window and binning
+        self._window = self._driver.get_image_area()
+        self._binning = self._driver.get_binning()
 
     async def close(self) -> None:
         """Close the module."""
@@ -80,6 +88,24 @@ class FliProCamera(BaseCamera, ICamera, IAbortable):
         # check driver
         if self._driver is None:
             raise ValueError("No camera driver.")
+
+        # set binning
+        log.info("Set binning to %dx%d.", self._binning[0], self._binning[1])
+        self._driver.set_binning(*self._binning)
+
+        # set window, size is given in binned pixels
+        width = int(math.floor(self._window[2]) / self._binning[0])
+        height = int(math.floor(self._window[3]) / self._binning[1])
+        log.info(
+            "Set window to %dx%d (binned %dx%d) at %d,%d.",
+            self._window[2],
+            self._window[3],
+            width,
+            height,
+            self._window[0],
+            self._window[1],
+        )
+        self._driver.set_image_area(self._window[0], self._window[1], width, height)
 
         # do exposure
         frame_size = self._driver.get_frame_size()
@@ -144,6 +170,60 @@ class FliProCamera(BaseCamera, ICamera, IAbortable):
         if self._driver is None:
             raise ValueError("No camera driver.")
         self._driver.cancel_exposure()
+
+    async def get_full_frame(self, **kwargs: Any) -> Tuple[int, int, int, int]:
+        """Returns full size of CCD.
+
+        Returns:
+            Tuple with left, top, width, and height set.
+        """
+        if self._driver is None:
+            raise ValueError("No camera driver.")
+        return self._driver.get_image_area()
+
+    async def get_window(self, **kwargs: Any) -> Tuple[int, int, int, int]:
+        """Returns the camera window.
+
+        Returns:
+            Tuple with left, top, width, and height set.
+        """
+        return self._window
+
+    async def get_binning(self, **kwargs: Any) -> Tuple[int, int]:
+        """Returns the camera binning.
+
+        Returns:
+            Tuple with x and y.
+        """
+        return self._binning
+
+    async def set_window(self, left: int, top: int, width: int, height: int, **kwargs: Any) -> None:
+        """Set the camera window.
+
+        Args:
+            left: X offset of window.
+            top: Y offset of window.
+            width: Width of window.
+            height: Height of window.
+
+        Raises:
+            ValueError: If binning could not be set.
+        """
+        self._window = (left, top, width, height)
+        log.info("Setting window to %dx%d at %d,%d...", width, height, left, top)
+
+    async def set_binning(self, x: int, y: int, **kwargs: Any) -> None:
+        """Set the camera binning.
+
+        Args:
+            x: X binning.
+            y: Y binning.
+
+        Raises:
+            ValueError: If binning could not be set.
+        """
+        self._binning = (x, y)
+        log.info("Setting binning to %dx%d...", x, y)
 
     async def get_cooling(self, **kwargs: Any) -> Tuple[bool, float, float]:
         """Returns the current status for the cooling.
