@@ -140,8 +140,8 @@ cdef class FliProDriver:
         cdef np.ndarray data = np.empty((height, width), dtype=np.ushort)
 
         # get pointer to data and copy data
-        cdef void* row_data = <void*> data.data
-        memcpy(<void*> data.data, <void *>buffers.pMergedImage, buffers.uiMergedBufferSize)
+        cdef void* raw_data = <void*> data.data
+        memcpy(raw_data, buffers.pMergedImage, buffers.uiMergedBufferSize)
 
         # clean up and return image
         free(frame_data)
@@ -151,6 +151,11 @@ cdef class FliProDriver:
     def stop_exposure(self):
         # start exposure
         success = FPROFrame_CaptureStop(self._handle)
+
+    def is_available(self):
+        cdef bool pAvailable
+        success = FPROFrame_IsAvailable(self._handle, &pAvailable)
+        return pAvailable
 
     def get_sensor_temperature(self):
         cdef LIBFLIPRO_API success
