@@ -2,7 +2,7 @@
 
 from collections import namedtuple
 from enum import Enum
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 from libc.stdlib cimport malloc, free
 from libc.string cimport memcpy
 
@@ -59,7 +59,8 @@ class DeviceCaps:
 cdef class FliProDriver:
     """Wrapper for the FLI driver."""
 
-    cdef FPRODEVICEINFO device
+    cdef DeviceInfo _device_info
+    cdef FPRODEVICEINFO _device
     cdef int32_t _handle
 
     @staticmethod
@@ -82,12 +83,17 @@ cdef class FliProDriver:
         return devices
 
     def __init__(self, device_info: DeviceInfo):
-        self.device = device_info.obj
+        self._device_info = device_info
+        self._device = device_info.obj
         self._handle = 0
+
+    @property
+    def device(self):
+        return self._device_info
 
     def open(self):
         cdef LIBFLIPRO_API success
-        success = FPROCam_Open(&self.device, &self._handle)
+        success = FPROCam_Open(&self._device, &self._handle)
 
     def close(self):
         cdef LIBFLIPRO_API success

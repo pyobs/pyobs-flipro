@@ -99,7 +99,7 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
         log.info("Set binning to %dx%d.", self._binning[0], self._binning[1])
         self._driver.set_binning(*self._binning)
 
-        # set window, size is given in binned pixels
+        # set window, size is given in unbinned pixels
         width = int(math.floor(self._window[2]) / self._binning[0])
         height = int(math.floor(self._window[3]) / self._binning[1])
         log.info(
@@ -111,11 +111,18 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
             self._window[0],
             self._window[1],
         )
-        self._driver.set_image_area(self._window[0], self._window[1], width, height)
+        self._driver.set_image_area(self._window[0], self._window[1], self._window[2], self._window[3])
 
-        # do exposure
+        # calculate frame size
         frame_size = self._driver.get_frame_size()
-        date_obs = Time.now()
+
+        # get date obs
+        log.info(
+            "Starting exposure with %s shutter for %.2f seconds...", "open" if open_shutter else "closed", exposure_time
+        )
+        date_obs = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%f")
+
+        # start exposure
         self._driver.start_exposure()
 
         # wait for exposure to finish
