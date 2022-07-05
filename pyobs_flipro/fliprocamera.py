@@ -11,10 +11,12 @@ from pyobs.images import Image
 from pyobs.utils.enums import ExposureStatus
 from pyobs.utils.time import Time
 
+from pyobs_flipro.fliprodriver import DeviceCaps
+
 log = logging.getLogger(__name__)
 
 
-class FliProCamera(BaseCamera, ICamera, IAbortable):
+class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling):
     """A pyobs module for FLIPRO cameras."""
 
     __module__ = "pyobs_flipro"
@@ -32,6 +34,7 @@ class FliProCamera(BaseCamera, ICamera, IAbortable):
         # variables
         self._driver: Optional[FliProDriver] = None
         self._device: Optional[DeviceInfo] = None
+        self._caps: Optional[DeviceCaps] = None
 
         # window and binning
         self._window = (0, 0, 0, 0)
@@ -55,6 +58,9 @@ class FliProCamera(BaseCamera, ICamera, IAbortable):
             self._driver.open()
         except ValueError as e:
             raise ValueError("Could not open FLIPRO camera: %s", e)
+
+        # get caps
+        self._caps = self._driver.get_capabilities()
 
         # get window and binning
         self._window = self._driver.get_image_area()
@@ -141,12 +147,12 @@ class FliProCamera(BaseCamera, ICamera, IAbortable):
         image.header["INSTRUME"] = (f"{dev.friendly_name} {dev.serial_number}", "Name of instrument")
 
         # binning
-        # image.header["XBINNING"] = image.header["DET-BIN1"] = (self._binning[0], "Binning factor used on X axis")
-        # image.header["YBINNING"] = image.header["DET-BIN2"] = (self._binning[1], "Binning factor used on Y axis")
+        image.header["XBINNING"] = image.header["DET-BIN1"] = (self._binning[0], "Binning factor used on X axis")
+        image.header["YBINNING"] = image.header["DET-BIN2"] = (self._binning[1], "Binning factor used on Y axis")
 
         # window
-        # image.header["XORGSUBF"] = (self._window[0], "Subframe origin on X axis")
-        # image.header["YORGSUBF"] = (self._window[1], "Subframe origin on Y axis")
+        image.header["XORGSUBF"] = (self._window[0], "Subframe origin on X axis")
+        image.header["YORGSUBF"] = (self._window[1], "Subframe origin on Y axis")
 
         # statistics
         image.header["DATAMIN"] = (float(np.min(img)), "Minimum data value")
@@ -177,9 +183,9 @@ class FliProCamera(BaseCamera, ICamera, IAbortable):
         Returns:
             Tuple with left, top, width, and height set.
         """
-        if self._driver is None:
+        if self._caps is None:
             raise ValueError("No camera driver.")
-        return self._driver.get_image_area()
+        return 0, 0, self._caps.uiMaxPixelImageWidth, self._caps.uiMaxPixelImageHeight
 
     async def get_window(self, **kwargs: Any) -> Tuple[int, int, int, int]:
         """Returns the camera window.

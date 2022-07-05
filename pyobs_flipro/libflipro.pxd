@@ -71,7 +71,30 @@ cdef extern from "../lib/libflipro.h":
         bool     bHighRequest;
         FPROPLANESTATS statsMergedImage;
         bool     bMergedRequest;
-    
+
+    ctypedef struct FPROCAP:
+        uint32_t uiSize;
+        uint32_t uiCapVersion;
+        uint32_t uiDeviceType;
+        uint32_t uiMaxPixelImageWidth;
+        uint32_t uiMaxPixelImageHeight;
+        uint32_t uiAvailablePixelDepths;
+        uint32_t uiBinningsTableSize;
+        uint32_t uiBlackLevelMax;
+        uint32_t uiBlackSunMax;
+        uint32_t uiLowGain;
+        uint32_t uiHighGain;
+        uint32_t uiReserved;
+        uint32_t uiRowScanTime;
+        uint32_t uiDummyPixelNum;
+        bool     bHorizontalScanInvertable;
+        bool     bVerticalScanInvertable;
+        uint32_t uiNVStorageAvailable;
+        uint32_t uiPreFrameReferenceRows;
+        uint32_t uiPostFrameReferenceRows;
+        uint32_t uiMetaDataSize;
+
+
     LIBFLIPRO_API FPROCam_GetAPIVersion(wchar_t *pVersion, uint32_t uiLength)
     LIBFLIPRO_API FPROCam_GetCameraList(FPRODEVICEINFO *pDeviceInfo, uint32_t *pNumDevices)
     LIBFLIPRO_API FPROCam_Open(FPRODEVICEINFO *pDevInfo, int32_t *pHandle)
@@ -101,3 +124,4 @@ cdef extern from "../lib/libflipro.h":
     LIBFLIPRO_API FPROFrame_IsAvailable(int32_t iHandle, bool *pAvailable);
     LIBFLIPRO_API FPROSensor_GetBinning(int32_t iHandle, uint32_t *pXBin, uint32_t *pYBin)
     LIBFLIPRO_API FPROSensor_SetBinning(int32_t iHandle, uint32_t uiXBin, uint32_t uiYBin);
+    LIBFLIPRO_API FPROSensor_GetCapabilities(int32_t iHandle, FPROCAP *pCap, uint32_t *pCapLength);

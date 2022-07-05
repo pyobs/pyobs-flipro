@@ -31,6 +31,29 @@ cdef class DeviceInfo:
     @property
     def serial_number(self):
         return self.__decode(self.obj.cSerialNo)
+    
+class DeviceCaps:
+    def __init__(self, obj):
+        self.uiSize = obj["uiSize"]
+        self.uiCapVersion = obj["uiCapVersion"]
+        self.uiDeviceType = obj["uiDeviceType"]
+        self.uiMaxPixelImageWidth = obj["uiMaxPixelImageWidth"]
+        self.uiMaxPixelImageHeight = obj["uiMaxPixelImageHeight"]
+        self.uiAvailablePixelDepths = obj["uiAvailablePixelDepths"]
+        self.uiBinningsTableSize = obj["uiBinningsTableSize"]
+        self.uiBlackLevelMax = obj["uiBlackLevelMax"]
+        self.uiBlackSunMax = obj["uiBlackSunMax"]
+        self.uiLowGain = obj["uiLowGain"]
+        self.uiHighGain = obj["uiHighGain"]
+        self.uiReserved = obj["uiReserved"]
+        self.uiRowScanTime = obj["uiRowScanTime"]
+        self.uiDummyPixelNum = obj["uiDummyPixelNum"]
+        self.bHorizontalScanInvertable = obj["bHorizontalScanInvertable"]
+        self.bVerticalScanInvertable = obj["bVerticalScanInvertable"]
+        self.uiNVStorageAvailable = obj["uiNVStorageAvailable"]
+        self.uiPreFrameReferenceRows = obj["uiPreFrameReferenceRows"]
+        self.uiPostFrameReferenceRows = obj["uiPostFrameReferenceRows"]
+        self.uiMetaDataSize = obj["uiMetaDataSize"]
 
 
 cdef class FliProDriver:
@@ -69,6 +92,12 @@ cdef class FliProDriver:
     def close(self):
         cdef LIBFLIPRO_API success
         success = FPROCam_Close(self._handle)
+
+    def get_capabilities(self):
+        cdef FPROCAP pCap
+        cdef uint32_t pCapLength = sizeof(FPROCAP)
+        success = FPROSensor_GetCapabilities(self._handle, &pCap, &pCapLength)
+        return DeviceCaps(pCap)
 
     def get_image_area(self) -> Tuple[int, int, int, int]:
         cdef LIBFLIPRO_API success
