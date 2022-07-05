@@ -242,11 +242,11 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
         """
         if self._driver is None:
             raise ValueError("No camera driver.")
-        enabled = self._temp_setpoint is not None
+        set_temp = self._driver.get_temperature_set_point()
         return (
-            enabled,
-            self._temp_setpoint if self._temp_setpoint is not None else 99.0,
-            self._driver.get_cooler_power(),
+            set_temp < 20.0,
+            set_temp,
+            self._driver.get_cooler_duty_cycle(),
         )
 
     async def get_temperatures(self, **kwargs: Any) -> Dict[str, float]:
@@ -255,11 +255,9 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
         Returns:
             Dict containing temperatures.
         """
-        from .flidriver import FliTemperature
-
         if self._driver is None:
             raise ValueError("No camera driver.")
-        return {"CCD": self._driver.get_temp(FliTemperature.CCD), "Base": self._driver.get_temp(FliTemperature.BASE)}
+        return {"CCD": self._driver.get_sensor_temperature, "Base": self._driver.get_temperatures()[1]}
 
     async def set_cooling(self, enabled: bool, setpoint: float, **kwargs: Any) -> None:
         """Enables/disables cooling and sets setpoint.
@@ -280,11 +278,8 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
         else:
             log.info("Disabling cooling and setting setpoint to 20°C...")
 
-        # if not enabled, set setpoint to None
-        self._temp_setpoint = setpoint if enabled else None
-
         # set setpoint
-        self._driver.set_temperature(float(setpoint) if setpoint is not None else 20.0)
+        self._driver.set_temperature_set_point(float(setpoint) if setpoint is not None else 20.0)
 
 
-__all__ = ["FliCamera"]
+__all__ = ["FliProCamera"]
