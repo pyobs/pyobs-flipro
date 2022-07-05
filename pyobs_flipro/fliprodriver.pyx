@@ -73,12 +73,14 @@ cdef class FliProDriver:
 
     @staticmethod
     def list_devices() -> List[DeviceInfo]:
-        cdef LIBFLIPRO_API success
         cdef FPRODEVICEINFO pDeviceInfo[10]
         cdef uint32_t pNumDevices = 10
 
-        success = FPROCam_GetCameraList(pDeviceInfo, &pNumDevices)
+        # get list of cameras
+        if FPROCam_GetCameraList(pDeviceInfo, &pNumDevices) < 0:
+            raise ValueError('Could not fetch list of devices.')
 
+        # return DeviceInfos
         devices = [DeviceInfo(pDeviceInfo[i]) for i in range(pNumDevices)]
         return devices
 
@@ -92,44 +94,42 @@ cdef class FliProDriver:
         return self._device_info
 
     def open(self):
-        cdef LIBFLIPRO_API success
-        success = FPROCam_Open(&self._device, &self._handle)
+        if FPROCam_Open(&self._device, &self._handle) < 0:
+            raise ValueError('Could not open camera.')
 
     def close(self):
-        cdef LIBFLIPRO_API success
-        success = FPROCam_Close(self._handle)
+        if FPROCam_Close(self._handle) < 0:
+            raise ValueError('Could not close camera.')
 
     def get_capabilities(self):
         cdef FPROCAP pCap
         cdef uint32_t pCapLength = sizeof(FPROCAP)
-        success = FPROSensor_GetCapabilities(self._handle, &pCap, &pCapLength)
+        if FPROSensor_GetCapabilities(self._handle, &pCap, &pCapLength) < 0:
+            raise ValueError('Could not fetch camera capabalities.')
         return DeviceCaps(pCap)
 
     def get_image_area(self) -> Tuple[int, int, int, int]:
-        cdef LIBFLIPRO_API success
         cdef uint32_t pColOffset, pRowOffset, pWidth, pHeight
-        success = FPROFrame_GetImageArea(self._handle, &pColOffset, &pRowOffset, &pWidth, &pHeight)
+        if FPROFrame_GetImageArea(self._handle, &pColOffset, &pRowOffset, &pWidth, &pHeight) < 0:
+            raise ValueError('Could not fetch image area.')
         return pColOffset, pRowOffset, pWidth, pHeight
 
     def set_image_area(self, col_offset, row_offset, width, height):
-        cdef LIBFLIPRO_API success
-        success = FPROFrame_SetImageArea(self._handle, col_offset, row_offset, width, height)
+        if FPROFrame_SetImageArea(self._handle, col_offset, row_offset, width, height) < 0:
+            raise ValueError('Could not set image area.')
 
     def get_exposure_time(self) -> int:
-        cdef LIBFLIPRO_API success
         cdef uint64_t pExposureTime, pDelay
         cdef bool immediately
-        success = FPROCtrl_GetExposure(self._handle, &pExposureTime, &pDelay, &immediately)
-        print('FPROCtrl_GetExposure', success)
-        print(pExposureTime, pDelay, immediately)
+        if FPROCtrl_GetExposure(self._handle, &pExposureTime, &pDelay, &immediately) < 0:
+            raise ValueError('Could not fetch exposure time.')
         return pExposureTime
 
     def set_exposure_time(self, exptime_ns: int):
         cdef LIBFLIPRO_API success
         cdef bool immediately = False
-        print(exptime_ns)
-        success = FPROCtrl_SetExposure(self._handle, exptime_ns, 0, immediately)
-        print('FPROCtrl_SetExposure', success)
+        if FPROCtrl_SetExposure(self._handle, exptime_ns, 0, immediately) < 0:
+            raise ValueError('Could not set exposure time.')
 
     def get_frame_size(self):
         # calculate size of the frame to retrieve from camera
@@ -137,12 +137,10 @@ cdef class FliProDriver:
 
     def start_exposure(self):
         # start exposure
-        success = FPROFrame_CaptureStart(self._handle, 1)
-        print('start', success)
+        if FPROFrame_CaptureStart(self._handle, 1) < 0:
+            raise ValueError('Could not start exposure.')
 
     def read_exposure(self, frame_size):
-        cdef LIBFLIPRO_API success
-
         # allocate memory
         cdef uint32_t c_frame_size = frame_size
         cdef uint8_t *frame_data = <uint8_t *> malloc(c_frame_size * sizeof(uint8_t))
@@ -171,7 +169,8 @@ cdef class FliProDriver:
         height = height // ybin
 
         # read frame
-        success = FPROFrame_GetVideoFrameUnpacked(self._handle, frame_data, &c_frame_size, 100, &buffers, &stats)
+        if FPROFrame_GetVideoFrameUnpacked(self._handle, frame_data, &c_frame_size, 100, &buffers, &stats) < 0:
+            raise ValueError('Could not fetch frame.')
 
         # check size
         print(width * height * sizeof(uint16_t), buffers.uiMergedBufferSize)
@@ -192,46 +191,50 @@ cdef class FliProDriver:
 
     def stop_exposure(self):
         # start exposure
-        success = FPROFrame_CaptureStop(self._handle)
+        if FPROFrame_CaptureStop(self._handle) < 0:
+            raise ValueError('Could not stop exposure.')
 
     def is_available(self):
         cdef bool pAvailable
-        success = FPROFrame_IsAvailable(self._handle, &pAvailable)
+        if  FPROFrame_IsAvailable(self._handle, &pAvailable) < 0:
+            raise ValueError('Could not fetch exposure status.')
         return pAvailable
 
     def get_sensor_temperature(self):
-        cdef LIBFLIPRO_API success
         cdef int32_t pTemp
-        success = FPROCtrl_GetSensorTemperature(self._handle, &pTemp)
+        if FPROCtrl_GetSensorTemperature(self._handle, &pTemp) < 0:
+            raise ValueError('Could not fetch sensor temperature.')
         return pTemp
 
     def get_temperatures(self):
-        cdef LIBFLIPRO_API success
         cdef double pAmbientTemp, pBaseTemp, pCoolerTemp
-        success = FPROCtrl_GetTemperatures(self._handle, &pAmbientTemp, &pBaseTemp, &pCoolerTemp)
+        if FPROCtrl_GetTemperatures(self._handle, &pAmbientTemp, &pBaseTemp, &pCoolerTemp) < 0:
+            raise ValueError('Could not fetch temperatures.')
         return pAmbientTemp, pBaseTemp, pCoolerTemp
 
     def get_temperature_set_point(self):
-        cdef LIBFLIPRO_API success
         cdef double pSetPoint
-        success = FPROCtrl_GetTemperatureSetPoint(self._handle, &pSetPoint)
+        if FPROCtrl_GetTemperatureSetPoint(self._handle, &pSetPoint) < 0:
+            raise ValueError('Could not get setpoint temperature.')
         return pSetPoint
 
     def set_temperature_set_point(self, temp):
-        cdef LIBFLIPRO_API success
         cdef double dblSetPoint = temp
-        success = FPROCtrl_SetTemperatureSetPoint(self._handle, dblSetPoint)
+        if FPROCtrl_SetTemperatureSetPoint(self._handle, dblSetPoint) < 0:
+            raise ValueError('Could not fetch setpoint temperature.')
 
     def get_cooler_duty_cycle(self):
-        cdef LIBFLIPRO_API success
         cdef uint32_t pDutyCycle
-        success = FPROCtrl_GetCoolerDutyCycle(self._handle, &pDutyCycle)
+        if FPROCtrl_GetCoolerDutyCycle(self._handle, &pDutyCycle) < 0:
+            raise ValueError('Could not fetch cooler duty cycle.')
         return pDutyCycle
 
     def get_binning(self):
         cdef uint32_t pXBin, pYBin
-        success = FPROSensor_GetBinning(self._handle, &pXBin, &pYBin)
+        if FPROSensor_GetBinning(self._handle, &pXBin, &pYBin) < 0:
+            raise ValueError('Could not fetch binning.')
         return pXBin, pYBin
 
     def set_binning(self, x, y):
-        success = FPROSensor_SetBinning(self._handle, x, y)
+        if FPROSensor_SetBinning(self._handle, x, y) < 0:
+            raise ValueError('Could not set binning.')

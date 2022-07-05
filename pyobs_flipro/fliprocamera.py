@@ -113,8 +113,13 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
         )
         self._driver.set_image_area(self._window[0], self._window[1], self._window[2], self._window[3])
 
+        # set exposure time
+        self._driver.set_exposure_time(int(exposure_time * 1e9))
+
         # calculate frame size
         frame_size = self._driver.get_frame_size()
+        print(frame_size)
+        print(4096 * 4096 * 4)
 
         # get date obs
         log.info(
@@ -251,7 +256,7 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
             raise ValueError("No camera driver.")
         set_temp = self._driver.get_temperature_set_point()
         return (
-            set_temp < 20.0,
+            True,
             set_temp,
             self._driver.get_cooler_duty_cycle(),
         )
@@ -264,7 +269,9 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
         """
         if self._driver is None:
             raise ValueError("No camera driver.")
-        return {"CCD": self._driver.get_sensor_temperature, "Base": self._driver.get_temperatures()[1]}
+        _, t_base, t_cooler = self._driver.get_temperatures()
+        # print(self._driver.get_sensor_temperature(), t_base, t_cooler)
+        return {"CCD": t_cooler, "Base": t_base}
 
     async def set_cooling(self, enabled: bool, setpoint: float, **kwargs: Any) -> None:
         """Enables/disables cooling and sets setpoint.

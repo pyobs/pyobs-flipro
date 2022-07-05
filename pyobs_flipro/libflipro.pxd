@@ -10,6 +10,8 @@ cdef extern from "../lib/libflipro.h":
     ctypedef enum FPROCONNECTION: FPRO_CONNECTION_USB, FPRO_CONNECTION_FIBRE
     ctypedef enum FPROUSBSPEED: FPRO_USB_FULLSPEED, FPRO_USB_HIGHSPEED, FPRO_USB_SUPERSPEED
     ctypedef enum FPRO_MERGEALGO: FPROMERGE_ALGO, FPROMERGE_ALGO_REF_FRAME
+    ctypedef enum FPRODBGLEVEL: FPRO_DEBUG_NONE, FPRO_DEBUG_ERROR, FPRO_DEBUG_WARNING, FPRO_DEBUG_INFO,\
+        FPRO_DEBUG_REGRW, FPRO_DEBUG_DEBUG, FPRO_DEBUG_TRACE
 
     ctypedef struct FPRO_CROP:
         uint32_t uiColumnOffset
@@ -125,3 +127,5 @@ cdef extern from "../lib/libflipro.h":
     LIBFLIPRO_API FPROSensor_GetBinning(int32_t iHandle, uint32_t *pXBin, uint32_t *pYBin)
     LIBFLIPRO_API FPROSensor_SetBinning(int32_t iHandle, uint32_t uiXBin, uint32_t uiYBin);
     LIBFLIPRO_API FPROSensor_GetCapabilities(int32_t iHandle, FPROCAP *pCap, uint32_t *pCapLength);
+    LIBFLIPRO_API FPROCtrl_SetSensorTemperatureReadEnable(int32_t iHandle, bool bEnable);
+    LIBFLIPRO_API FPRODebug_EnableLevel(bool bEnable, FPRODBGLEVEL eLevel)
