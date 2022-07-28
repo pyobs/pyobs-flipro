@@ -118,8 +118,6 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
 
         # calculate frame size
         frame_size = self._driver.get_frame_size()
-        print(frame_size)
-        print(4096 * 4096 * 4)
 
         # get date obs
         log.info(
@@ -255,6 +253,7 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
         if self._driver is None:
             raise ValueError("No camera driver.")
         set_temp = self._driver.get_temperature_set_point()
+        await asyncio.sleep(0.1)
         return (
             True,
             set_temp,

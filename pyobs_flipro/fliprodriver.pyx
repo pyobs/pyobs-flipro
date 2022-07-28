@@ -169,11 +169,11 @@ cdef class FliProDriver:
         height = height // ybin
 
         # read frame
+        # TODO: this fails on images that have not full width of sensor
         if FPROFrame_GetVideoFrameUnpacked(self._handle, frame_data, &c_frame_size, 100, &buffers, &stats) < 0:
             raise ValueError('Could not fetch frame.')
 
         # check size
-        print(width * height * sizeof(uint16_t), buffers.uiMergedBufferSize)
         if width * height * sizeof(uint16_t) != buffers.uiMergedBufferSize:
             raise ValueError('Invalid image size.')
 
