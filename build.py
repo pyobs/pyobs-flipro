@@ -5,7 +5,7 @@ from Cython.Build import cythonize
 from Cython.Distutils.build_ext import new_build_ext as cython_build_ext
 
 
-def build() -> None:
+def build(**kwargs) -> None:
     # if running in RTD, skip compilation
     if os.environ.get("READTHEDOCS") == "True":
         return
@@ -18,7 +18,7 @@ def build() -> None:
             "pyobs_flipro.fliprodriver",
             ["pyobs_flipro/fliprodriver.pyx"],
             library_dirs=["lib/"],
-            libraries=["libflipro", "cfitsio", "usb-1.0"],
+            libraries=["libflipro", "libflialgo", "cfitsio", "usb-1.0"],
             include_dirs=[numpy.get_include()],
             extra_compile_args=["-fPIC"],
         )
