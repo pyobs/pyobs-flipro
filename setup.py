@@ -15,4 +15,5 @@ extensions = [
 setup(
     name="pyobs-flipro",
     ext_modules=cythonize(extensions),
+    packages=["pyobs_flipro"],
 )
