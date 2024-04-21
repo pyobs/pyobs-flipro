@@ -21,12 +21,11 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
 
     __module__ = "pyobs_flipro"
 
-    def __init__(self, **kwargs: Any):
+    def __init__(self, setpoint: float, **kwargs: Any):
         """Initializes a new FliProCamera.
 
         Args:
             setpoint: Cooling temperature setpoint.
-            keep_alive_ping: Interval in seconds to ping camera.
         """
         BaseCamera.__init__(self, **kwargs)
         from .fliprodriver import FliProDriver, DeviceInfo  # type: ignore
@@ -35,6 +34,7 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
         self._driver: Optional[FliProDriver] = None
         self._device: Optional[DeviceInfo] = None
         self._caps: Optional[DeviceCaps] = None
+        self._temp_setpoint: Optional[float] = setpoint
 
         # window and binning
         self._window = (0, 0, 0, 0)
@@ -61,6 +61,10 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
 
         # get caps
         self._caps = self._driver.get_capabilities()
+
+        # set cooling
+        if self._temp_setpoint is not None:
+            await self.set_cooling(True, self._temp_setpoint)
 
         # get window and binning
         self._window = self._driver.get_image_area()
