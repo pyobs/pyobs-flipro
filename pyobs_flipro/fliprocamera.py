@@ -129,7 +129,7 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
         self._driver.start_exposure()
 
         # wait exposure
-        await self._wait_exposure(abort_event, exposure_time)
+        await self._wait_exposure(abort_event, exposure_time, open_shutter)
 
         # readout
         log.info("Exposure finished, reading out...")
@@ -170,7 +170,7 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
         log.info("Readout finished.")
         return image
 
-    async def _wait_exposure(self, abort_event: asyncio.Event, exposure_time: float) -> None:
+    async def _wait_exposure(self, abort_event: asyncio.Event, exposure_time: float, open_shutter: bool) -> None:
         """Wait for exposure to finish.
 
         Params:
