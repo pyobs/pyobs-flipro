@@ -21,6 +21,7 @@ def build(**kwargs) -> None:
             libraries=["libflipro", "libflialgo", "cfitsio", "usb-1.0"],
             include_dirs=[numpy.get_include()],
             extra_compile_args=["-fPIC"],
+            define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")],
         )
     ]
     ext_modules = cythonize(extensions)
