@@ -11,7 +11,7 @@ cimport numpy as np
 np.import_array()
 
 
-from libflipro cimport *
+from pyobs_flipro.libflipro cimport *
 
 
 cdef class DeviceInfo:
