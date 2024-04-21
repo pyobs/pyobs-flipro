@@ -2,7 +2,7 @@ import asyncio
 import logging
 import math
 from datetime import datetime
-from typing import Tuple, Any, Optional, Dict
+from typing import Tuple, Any, Optional, Dict, List
 import numpy as np
 
 from pyobs.interfaces import ICamera, IWindow, IBinning, ICooling, IAbortable
@@ -237,6 +237,14 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
         """
         self._window = (left, top, width, height)
         log.info("Setting window to %dx%d at %d,%d...", width, height, left, top)
+
+    async def list_binnings(self, **kwargs: Any) -> List[Tuple[int, int]]:
+        """List available binnings.
+
+        Returns:
+            List of available binnings as (x, y) tuples.
+        """
+        return [(1, 1), (2, 2), (3, 3), (4, 4)]
 
     async def set_binning(self, x: int, y: int, **kwargs: Any) -> None:
         """Set the camera binning.
