@@ -37,7 +37,7 @@ cdef class DeviceInfo:
         return self.__decode(self.obj.cDevicePath)
 
     @property
-    def conn_type(self)
+    def conn_type(self):
         return "USB" if self.obj.eConnType == FPRO_CONNECTION_USB else "FIBRE"
 
     @property
