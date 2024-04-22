@@ -31,7 +31,32 @@ cdef class DeviceInfo:
     @property
     def serial_number(self):
         return self.__decode(self.obj.cSerialNo)
-    
+
+    @property
+    def device_path(self):
+        return self.__decode(self.obj.cDevicePath)
+
+    @property
+    def conn_type(self)
+        return "USB" if self.obj.eConnType == FPRO_CONNECTION_USB else "FIBRE"
+
+    @property
+    def vendor_id(self):
+        return self.obj.uiVendorId
+
+    @property
+    def prod_id(self):
+        return self.obj.uiProdId
+
+    @property
+    def usb_speed(self):
+        return {
+            FPRO_USB_FULLSPEED: "FULLSPEED",
+            FPRO_USB_HIGHSPEED: "HIGHSPEED",
+            FPRO_USB_SUPERSPEED: "SUPERSPEED"
+        }[self.obj.eUSBSpeed]
+
+
 class DeviceCaps:
     def __init__(self, obj):
         self.uiSize = obj["uiSize"]
