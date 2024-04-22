@@ -52,6 +52,7 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
 
         # open first one
         self._device = devices[0]
+        self._log_device_info()
         log.info('Opening connection to "%s"...', self._device.friendly_name)
         self._driver = FliProDriver(self._device)
         try:
@@ -61,6 +62,7 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
 
         # get caps
         self._caps = self._driver.get_capabilities()
+        self._log_capabilities()
 
         # set cooling
         if self._temp_setpoint is not None:
@@ -79,6 +81,38 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
             # close connection
             self._driver.close()
             self._driver = None
+
+    def _log_device_info(self):
+        log.info("Device info:")
+        log.info(f"  Friendly Name: {self._device.obj.cFriendlyName}")
+        log.info(f"      Serial No: {self._device.obj.cSerialNo}")
+        log.info(f"    Device Path: {self._device.obj.cDevicePath}")
+        log.info(f"      Conn Type: {self._device.obj.eConnType}")
+        log.info(f"      Vendor ID: {self._device.obj.uiVendorId}")
+        log.info(f"        Prod ID: {self._device.obj.uiProdId}")
+        log.info(f"      USB Speed: {self._device.obj.eUSBSpeed}")
+
+    def _log_capabilities(self):
+        log.info("Capabilities:")
+        log.info(f"                     Version: {self._caps.uiCapVersion}")
+        log.info(f"                 Device Type: {self._caps.uiDeviceType}")
+        log.info(f"       Max Pixel Image Width: {self._caps.uiMaxPixelImageWidth}")
+        log.info(f"      Max Pixel Image Height: {self._caps.uiMaxPixelImageHeight}")
+        log.info(f"      Available Pixel Depths: {self._caps.uiAvailablePixelDepths}")
+        log.info(f"          Binning Table Size: {self._caps.uiBinningsTableSize}")
+        log.info(f"             Black Level Max: {self._caps.uiBlackLevelMax}")
+        log.info(f"               Black Sun Max: {self._caps.uiBlackSunMax}")
+        log.info(f"                    Low Gain: {self._caps.uiLowGain}")
+        log.info(f"                   High Gain: {self._caps.uiHighGain}")
+        # log.info(f"{self._caps.uiReserved}")
+        log.info(f"               Row Scan Time: {self._caps.uiRowScanTime}")
+        log.info(f"             Dummy Pixel Num: {self._caps.uiDummyPixelNum}")
+        log.info(f"  Horizontal Scan Invertable: {self._caps.bHorizontalScanInvertable}")
+        log.info(f"    Vertical Scan Invertable: {self._caps.bVerticalScanInvertable}")
+        log.info(f"        NV Storage Available: {self._caps.uiNVStorageAvailable}")
+        log.info(f"    Pre Frame Reference Rows: {self._caps.uiPreFrameReferenceRows}")
+        log.info(f"   Post Frame Reference Rows: {self._caps.uiPostFrameReferenceRows}")
+        log.info(f"              Meta Data Size: {self._caps.uiMetaDataSize}")
 
     async def _expose(self, exposure_time: float, open_shutter: bool, abort_event: asyncio.Event) -> Image:
         """Actually do the exposure, should be implemented by derived classes.
