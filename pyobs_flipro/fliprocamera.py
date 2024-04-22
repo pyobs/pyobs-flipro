@@ -88,9 +88,9 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
         log.info(f"      Serial No: {self._device.serial_number}")
         log.info(f"    Device Path: {self._device.device_path}")
         log.info(f"      Conn Type: {self._device.conn_type}")
-        log.info(f"      Vendor ID: {self._device.obj.uiVendorId}")
-        log.info(f"        Prod ID: {self._device.obj.uiProdId}")
-        log.info(f"      USB Speed: {self._device.obj.eUSBSpeed}")
+        log.info(f"      Vendor ID: {self._device.vendor_id}")
+        log.info(f"        Prod ID: {self._device.prod_id}")
+        log.info(f"      USB Speed: {self._device.usb_speed}")
 
     def _log_capabilities(self):
         log.info("Capabilities:")
