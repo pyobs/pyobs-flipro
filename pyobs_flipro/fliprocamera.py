@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import math
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Tuple, Any, Optional, Dict, List
 import numpy as np
 
@@ -160,7 +160,7 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
         log.info(
             "Starting exposure with %s shutter for %.2f seconds...", "open" if open_shutter else "closed", exposure_time
         )
-        date_obs = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%f")
+        date_obs = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")
 
         # start exposure
         self._driver.start_exposure()
