@@ -1,31 +1,35 @@
-[tool.poetry]
+[project]
 name = "pyobs-flipro"
-version = "1.1.5"
+version = "1.2.0"
 description = "pyobs module for FLIPRO cameras"
-authors = ["Tim-Oliver Husser <thusser@uni-goettingen.de>"]
+authors = [{ name = "Tim-Oliver Husser", email = "thusser@uni-goettingen.de" }]
+requires-python = ">=3.11"
 license = "MIT"
-include = ['lib']
+dependencies = [
+    "astropy>=7.0.1,<8",
+    "numpy>=2.2.5,<3",
+    "pyobs-core>=1,<2",
+]
 
-[tool.poetry.build]
-script = "build.py"
-generate-setup-file = false
+[dependency-groups]
+dev = [
+    "black>=25.1.0,<26",
+    "pre-commit>=4.2.0,<5",
+    "flake8>=7.3.0",
+    "sphinx-rtd-theme>=1.0.0,<2",
+    "Sphinx>=4.4.0,<5",
+    "Cython>=0.29.26,<0.30",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.9,<3.12"
-astropy = "^5.0"
-numpy = "^1.21"
-pyobs-core = ">=0.16.0"
+[tool.hatch.build.targets.sdist]
+include = ["lib"]
 
-[tool.poetry.dev-dependencies]
-black = "^21.12b0"
-pre-commit = "^2.16.0"
-sphinx-rtd-theme = "^1.0.0"
-Sphinx = "^4.4.0"
-Cython = "^0.29.26"
+[tool.hatch.build.targets.wheel]
+include = ["lib"]
 
 [build-system]
-requires = ["poetry-core>=1.0.0", "Cython>=0.29.0", "numpy>=1.21.0", "setuptools"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.black]
 line-length = 120
