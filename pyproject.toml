@@ -1,6 +1,6 @@
 [project]
 name = "pyobs-flipro"
-version = "1.2.0"
+version = "2.0.0.dev0"
 description = "pyobs module for FLIPRO cameras"
 authors = [{ name = "Tim-Oliver Husser", email = "thusser@uni-goettingen.de" }]
 requires-python = ">=3.11"
@@ -8,29 +8,37 @@ license = "MIT"
 dependencies = [
     "astropy>=7.0.1,<8",
     "numpy>=2.2.5,<3",
-    "pyobs-core>=1,<2",
+    "pyobs-core>=2.0.0.dev6,<3",
 ]
 
 [dependency-groups]
 dev = [
     "black>=25.1.0,<26",
     "pre-commit>=4.2.0,<5",
-    "flake8>=7.3.0",
+    "ruff>=0.9.0",
+    "pyrefly>=1.1.1",
     "sphinx-rtd-theme>=1.0.0,<2",
     "Sphinx>=4.4.0,<5",
-    "Cython>=0.29.26,<0.30",
 ]
 
-[tool.hatch.build.targets.sdist]
-include = ["lib"]
-
-[tool.hatch.build.targets.wheel]
-include = ["lib"]
+[tool.scikit-build]
+wheel.packages = ["pyobs_flipro"]
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["scikit_build_core>=0.12", "cython>=3.0", "cython-cmake", "numpy>=2.0"]
+build-backend = "scikit_build_core.build"
 
 [tool.black]
 line-length = 120
 target-version = ['py39']
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "G"]
+
+[tool.pyrefly]
+python-version = "3.11"
+ignore-missing-imports = []
