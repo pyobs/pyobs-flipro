@@ -1,1 +1,1 @@
-from .fliprocamera import FliProCamera
+from .fliprocamera import FliProCamera as FliProCamera
