@@ -1,22 +1,23 @@
 import asyncio
 import logging
 import math
-from datetime import datetime, timezone
-from typing import Tuple, Any, Optional, Dict, List
+from datetime import UTC, datetime
+from typing import Any
+
 import numpy as np
-
-from pyobs.interfaces import ICamera, IWindow, IBinning, ICooling, IAbortable
-from pyobs.modules.camera.basecamera import BaseCamera
 from pyobs.images import Image
+from pyobs.interfaces import IAbortable, IBinning, ICamera, ICooling, ITemperatures, IWindow
+from pyobs.interfaces.IBinning import BinningCapabilities, BinningState
+from pyobs.interfaces.ICooling import CoolingState
+from pyobs.interfaces.ITemperatures import SensorReading, TemperaturesState
+from pyobs.interfaces.IWindow import WindowCapabilities, WindowState
+from pyobs.modules.camera.basecamera import BaseCamera
 from pyobs.utils.enums import ExposureStatus
-from pyobs.utils.time import Time
-
-from pyobs_flipro.fliprodriver import DeviceCaps
 
 log = logging.getLogger(__name__)
 
 
-class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling):
+class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling, ITemperatures):
     """A pyobs module for FLIPRO cameras."""
 
     __module__ = "pyobs_flipro"
@@ -28,17 +29,24 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
             setpoint: Cooling temperature setpoint.
         """
         BaseCamera.__init__(self, **kwargs)
-        from .fliprodriver import FliProDriver, DeviceInfo  # type: ignore
+        from .fliprodriver import DeviceCaps, DeviceInfo, FliProDriver  # type: ignore
 
         # variables
-        self._driver: Optional[FliProDriver] = None
-        self._device: Optional[DeviceInfo] = None
-        self._caps: Optional[DeviceCaps] = None
-        self._temp_setpoint: Optional[float] = setpoint
+        self._driver: FliProDriver | None = None
+        self._device: DeviceInfo | None = None
+        self._caps: DeviceCaps | None = None
+        self._temp_setpoint: float | None = setpoint
 
-        # window and binning
+        # window, binning, and full frame
+        self._full_frame = (0, 0, 0, 0)
         self._window = (0, 0, 0, 0)
         self._binning = (1, 1)
+
+        # cooling state
+        self._cooling_enabled = False
+
+        # background task for polling cooling/temperature
+        self.add_background_task(self._poll_cooling)
 
     async def open(self) -> None:
         """Open module."""
@@ -58,60 +66,87 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
         try:
             self._driver.open()
         except ValueError as e:
-            raise ValueError("Could not open FLIPRO camera: %s", e)
+            raise ValueError(f"Could not open FLIPRO camera: {e}")
 
         # get caps
         self._caps = self._driver.get_capabilities()
         self._log_capabilities()
 
+        # store full frame from caps
+        self._full_frame = (0, 0, self._caps.uiMaxPixelImageWidth, self._caps.uiMaxPixelImageHeight)
+
         # set cooling
         if self._temp_setpoint is not None:
             await self.set_cooling(True, self._temp_setpoint)
 
-        # get window and binning
+        # get window and binning from driver
         self._window = self._driver.get_image_area()
         self._binning = self._driver.get_binning()
+
+        # publish capabilities and initial states
+        await self.comm.set_capabilities(
+            IWindow,
+            WindowCapabilities(
+                full_frame_x=self._full_frame[0],
+                full_frame_y=self._full_frame[1],
+                full_frame_width=self._full_frame[2],
+                full_frame_height=self._full_frame[3],
+            ),
+        )
+        await self.comm.set_state(
+            IWindow, WindowState(x=self._window[0], y=self._window[1], width=self._window[2], height=self._window[3])
+        )
+        await self.comm.set_capabilities(
+            IBinning,
+            BinningCapabilities(
+                binnings=[
+                    BinningState(x=1, y=1),
+                    BinningState(x=2, y=2),
+                    BinningState(x=3, y=3),
+                    BinningState(x=4, y=4),
+                ]
+            ),
+        )
+        await self.comm.set_state(IBinning, BinningState(x=self._binning[0], y=self._binning[1]))
 
     async def close(self) -> None:
         """Close the module."""
         await BaseCamera.close(self)
 
-        # not open?
         if self._driver is not None:
-            # close connection
             self._driver.close()
             self._driver = None
 
-    def _log_device_info(self):
+    def _log_device_info(self) -> None:
         log.info("Device info:")
-        log.info(f"  - Friendly Name: {self._device.friendly_name}")
-        log.info(f"  - Serial No:     {self._device.serial_number}")
-        log.info(f"  - Device Path:   {self._device.device_path}")
-        log.info(f"  - Conn Type:     {self._device.conn_type}")
-        log.info(f"  - Vendor ID:     {self._device.vendor_id}")
-        log.info(f"  - Prod ID:       {self._device.prod_id}")
-        log.info(f"  - USB Speed:     {self._device.usb_speed}")
+        log.info("  - Friendly Name: %s", self._device.friendly_name)
+        log.info("  - Serial No:     %s", self._device.serial_number)
+        log.info("  - Device Path:   %s", self._device.device_path)
+        log.info("  - Conn Type:     %s", self._device.conn_type)
+        log.info("  - Vendor ID:     %s", self._device.vendor_id)
+        log.info("  - Prod ID:       %s", self._device.prod_id)
+        log.info("  - USB Speed:     %s", self._device.usb_speed)
 
-    def _log_capabilities(self):
+    def _log_capabilities(self) -> None:
         log.info("Capabilities:")
-        log.info(f"  - Version:                    {self._caps.uiCapVersion}")
-        log.info(f"  - Device Type:                {self._caps.uiDeviceType}")
-        log.info(f"  - Max Pixel Image Width:      {self._caps.uiMaxPixelImageWidth}")
-        log.info(f"  - Max Pixel Image Height:     {self._caps.uiMaxPixelImageHeight}")
-        log.info(f"  - Available Pixel Depths:     {self._caps.uiAvailablePixelDepths}")
-        log.info(f"  - Binning Table Size:         {self._caps.uiBinningsTableSize}")
-        log.info(f"  - Black Level Max:            {self._caps.uiBlackLevelMax}")
-        log.info(f"  - Black Sun Max:              {self._caps.uiBlackSunMax}")
-        log.info(f"  - Low Gain:                   {self._caps.uiLowGain}")
-        log.info(f"  - High Gain:                  {self._caps.uiHighGain}")
-        log.info(f"  - Row Scan Time:              {self._caps.uiRowScanTime}")
-        log.info(f"  - Dummy Pixel Num:            {self._caps.uiDummyPixelNum}")
-        log.info(f"  - Horizontal Scan Invertable: {self._caps.bHorizontalScanInvertable}")
-        log.info(f"  - Vertical Scan Invertable:   {self._caps.bVerticalScanInvertable}")
-        log.info(f"  - NV Storage Available:       {self._caps.uiNVStorageAvailable}")
-        log.info(f"  - Pre Frame Reference Rows:   {self._caps.uiPreFrameReferenceRows}")
-        log.info(f"  - Post Frame Reference Rows:  {self._caps.uiPostFrameReferenceRows}")
-        log.info(f"  - Meta Data Size:             {self._caps.uiMetaDataSize}")
+        log.info("  - Version:                    %s", self._caps.uiCapVersion)
+        log.info("  - Device Type:                %s", self._caps.uiDeviceType)
+        log.info("  - Max Pixel Image Width:      %s", self._caps.uiMaxPixelImageWidth)
+        log.info("  - Max Pixel Image Height:     %s", self._caps.uiMaxPixelImageHeight)
+        log.info("  - Available Pixel Depths:     %s", self._caps.uiAvailablePixelDepths)
+        log.info("  - Binning Table Size:         %s", self._caps.uiBinningsTableSize)
+        log.info("  - Black Level Max:            %s", self._caps.uiBlackLevelMax)
+        log.info("  - Black Sun Max:              %s", self._caps.uiBlackSunMax)
+        log.info("  - Low Gain:                   %s", self._caps.uiLowGain)
+        log.info("  - High Gain:                  %s", self._caps.uiHighGain)
+        log.info("  - Row Scan Time:              %s", self._caps.uiRowScanTime)
+        log.info("  - Dummy Pixel Num:            %s", self._caps.uiDummyPixelNum)
+        log.info("  - Horizontal Scan Invertable: %s", self._caps.bHorizontalScanInvertable)
+        log.info("  - Vertical Scan Invertable:   %s", self._caps.bVerticalScanInvertable)
+        log.info("  - NV Storage Available:       %s", self._caps.uiNVStorageAvailable)
+        log.info("  - Pre Frame Reference Rows:   %s", self._caps.uiPreFrameReferenceRows)
+        log.info("  - Post Frame Reference Rows:  %s", self._caps.uiPostFrameReferenceRows)
+        log.info("  - Meta Data Size:             %s", self._caps.uiMetaDataSize)
 
     async def _expose(self, exposure_time: float, open_shutter: bool, abort_event: asyncio.Event) -> Image:
         """Actually do the exposure, should be implemented by derived classes.
@@ -160,7 +195,7 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
         log.info(
             "Starting exposure with %s shutter for %.2f seconds...", "open" if open_shutter else "closed", exposure_time
         )
-        date_obs = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")
+        date_obs = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")
 
         # start exposure
         self._driver.start_exposure()
@@ -200,65 +235,25 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
         image.header["DATAMEAN"] = (float(np.mean(img)), "Mean data value")
 
         # biassec/trimsec
-        full = self._driver.get_image_area()
-        self.set_biassec_trimsec(image.header, *full)
+        self.set_biassec_trimsec(image.header, *self._full_frame)
 
         # return FITS image
         log.info("Readout finished.")
         return image
 
     async def _wait_exposure(self, abort_event: asyncio.Event, exposure_time: float, open_shutter: bool) -> None:
-        """Wait for exposure to finish.
-
-        Params:
-            abort_event: Event that aborts the exposure.
-            exposure_time: Exp time in sec.
-        """
-        # wait for exposure to finish
+        """Wait for exposure to finish."""
         while not self._driver.is_available():
-            # aborted?
             if abort_event.is_set():
                 await self._change_exposure_status(ExposureStatus.IDLE)
                 raise InterruptedError("Aborted exposure.")
-
-            # sleep a little
             await asyncio.sleep(0.01)
 
     async def _abort_exposure(self) -> None:
-        """Abort the running exposure. Should be implemented by derived class.
-
-        Raises:
-            ValueError: If an error occured.
-        """
+        """Abort the running exposure."""
         if self._driver is None:
             raise ValueError("No camera driver.")
         self._driver.cancel_exposure()
-
-    async def get_full_frame(self, **kwargs: Any) -> Tuple[int, int, int, int]:
-        """Returns full size of CCD.
-
-        Returns:
-            Tuple with left, top, width, and height set.
-        """
-        if self._caps is None:
-            raise ValueError("No camera driver.")
-        return 0, 0, self._caps.uiMaxPixelImageWidth, self._caps.uiMaxPixelImageHeight
-
-    async def get_window(self, **kwargs: Any) -> Tuple[int, int, int, int]:
-        """Returns the camera window.
-
-        Returns:
-            Tuple with left, top, width, and height set.
-        """
-        return self._window
-
-    async def get_binning(self, **kwargs: Any) -> Tuple[int, int]:
-        """Returns the camera binning.
-
-        Returns:
-            Tuple with x and y.
-        """
-        return self._binning
 
     async def set_window(self, left: int, top: int, width: int, height: int, **kwargs: Any) -> None:
         """Set the camera window.
@@ -268,20 +263,10 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
             top: Y offset of window.
             width: Width of window.
             height: Height of window.
-
-        Raises:
-            ValueError: If binning could not be set.
         """
         self._window = (left, top, width, height)
         log.info("Setting window to %dx%d at %d,%d...", width, height, left, top)
-
-    async def list_binnings(self, **kwargs: Any) -> List[Tuple[int, int]]:
-        """List available binnings.
-
-        Returns:
-            List of available binnings as (x, y) tuples.
-        """
-        return [(1, 1), (2, 2), (3, 3), (4, 4)]
+        await self.comm.set_state(IWindow, WindowState(x=left, y=top, width=width, height=height))
 
     async def set_binning(self, x: int, y: int, **kwargs: Any) -> None:
         """Set the camera binning.
@@ -289,65 +274,54 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling)
         Args:
             x: X binning.
             y: Y binning.
-
-        Raises:
-            ValueError: If binning could not be set.
         """
         self._binning = (x, y)
         log.info("Setting binning to %dx%d...", x, y)
+        await self.comm.set_state(IBinning, BinningState(x=x, y=y))
 
-    async def get_cooling(self, **kwargs: Any) -> Tuple[bool, float, float]:
-        """Returns the current status for the cooling.
-
-        Returns:
-            Tuple containing:
-                Enabled (bool):         Whether the cooling is enabled
-                SetPoint (float):       Setpoint for the cooling in celsius.
-                Power (float):          Current cooling power in percent or None.
-        """
-        if self._driver is None:
-            raise ValueError("No camera driver.")
-        set_temp = self._driver.get_temperature_set_point()
-        await asyncio.sleep(0.1)
-        return (
-            True,
-            set_temp,
-            self._driver.get_cooler_duty_cycle(),
-        )
-
-    async def get_temperatures(self, **kwargs: Any) -> Dict[str, float]:
-        """Returns all temperatures measured by this module.
-
-        Returns:
-            Dict containing temperatures.
-        """
-        if self._driver is None:
-            raise ValueError("No camera driver.")
-        _, t_base, t_cooler = self._driver.get_temperatures()
-        # print(self._driver.get_sensor_temperature(), t_base, t_cooler)
-        return {"CCD": t_cooler, "Base": t_base}
-
-    async def set_cooling(self, enabled: bool, setpoint: float, **kwargs: Any) -> None:
+    async def set_cooling(self, enabled: bool, setpoint: float | None, **kwargs: Any) -> None:
         """Enables/disables cooling and sets setpoint.
 
         Args:
             enabled: Enable or disable cooling.
             setpoint: Setpoint in celsius for the cooling.
-
-        Raises:
-            ValueError: If cooling could not be set.
         """
         if self._driver is None:
             raise ValueError("No camera driver.")
 
-        # log
         if enabled:
             log.info("Enabling cooling with a setpoint of %.2f°C...", setpoint)
         else:
             log.info("Disabling cooling and setting setpoint to 20°C...")
 
-        # set setpoint
-        self._driver.set_temperature_set_point(float(setpoint) if setpoint is not None else 20.0)
+        actual_setpoint = float(setpoint) if setpoint is not None else 20.0
+        self._driver.set_temperature_set_point(actual_setpoint)
+        self._cooling_enabled = enabled
+        await self.comm.set_state(ICooling, CoolingState(setpoint=actual_setpoint, power=None, enabled=enabled))
+
+    async def _poll_cooling(self) -> None:
+        """Background task: periodically reads cooling status and publishes ICooling and ITemperatures state."""
+        while True:
+            try:
+                if self._driver is not None:
+                    setpoint = self._driver.get_temperature_set_point()
+                    duty = self._driver.get_cooler_duty_cycle()
+                    _, t_base, t_cooler = self._driver.get_temperatures()
+                    await self.comm.set_state(
+                        ICooling, CoolingState(setpoint=setpoint, power=round(duty), enabled=self._cooling_enabled)
+                    )
+                    await self.comm.set_state(
+                        ITemperatures,
+                        TemperaturesState(
+                            readings=[
+                                SensorReading(name="CCD", value=t_cooler),
+                                SensorReading(name="Base", value=t_base),
+                            ]
+                        ),
+                    )
+            except Exception:
+                pass
+            await asyncio.sleep(10)
 
 
 __all__ = ["FliProCamera"]
