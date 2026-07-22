@@ -1,8 +1,11 @@
 import asyncio
 import logging
 import math
+import threading
+import time
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, TypeVar, cast
 
 import numpy as np
 from pyobs.images import Image
@@ -15,6 +18,20 @@ from pyobs.modules.camera.basecamera import BaseCamera
 from pyobs.utils.enums import ExposureStatus
 
 log = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
+
+# FLIPRO SDK calls are blocking and are made directly on the event loop thread (see
+# _run_blocking). If the camera has gone unresponsive, they can hang indefinitely, so they're
+# bounded with a timeout rather than let a single dead camera freeze the whole module.
+_SDK_CALL_TIMEOUT = 5.0
+
+# reading out a frame after exposure can take longer than the other SDK calls above.
+_READOUT_TIMEOUT = 30.0
+
+# the exposure-wait loop's own timeout needs to cover the actual exposure time plus some margin
+# for overhead -- exposure_time alone would be too tight.
+_EXPOSURE_WAIT_MARGIN = 30.0
 
 
 class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling, ITemperatures):
@@ -48,40 +65,96 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
         # background task for polling cooling/temperature
         self.add_background_task(self._poll_cooling)
 
+    @staticmethod
+    async def _run_blocking(func: Callable[[], None], timeout: float = _SDK_CALL_TIMEOUT) -> bool:
+        """Run a blocking FLIPRO SDK call in a daemon thread, so a hung call can't freeze the module.
+
+        A plain executor isn't used here, since its worker threads are non-daemon and Python joins
+        them on interpreter shutdown -- a hung call would then just move the freeze to process exit.
+
+        Returns:
+            True if func completed within timeout, False if it's still running in the background.
+        """
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[None] = loop.create_future()
+
+        def _wrapper() -> None:
+            try:
+                func()
+            finally:
+                loop.call_soon_threadsafe(future.set_result, None)
+
+        threading.Thread(target=_wrapper, daemon=True).start()
+        try:
+            await asyncio.wait_for(future, timeout=timeout)
+            return True
+        except TimeoutError:
+            return False
+
+    async def _run_blocking_or_raise(self, func: Callable[[], _T], timeout: float = _SDK_CALL_TIMEOUT) -> _T:
+        """Run a blocking FLIPRO SDK call in a thread, returning its result or re-raising what it raised.
+
+        Unlike _run_blocking(), this also carries the callable's return value/exception back to the
+        caller -- several FLIPRO calls here drive control flow via their return value or a raised
+        ValueError (e.g. device lookup, exposure availability), which a bare fire-and-forget thread
+        call would otherwise silently lose.
+        """
+        outcome: list[Any] = []
+
+        def _wrapper() -> None:
+            try:
+                outcome.append(func())
+            except BaseException as e:
+                outcome.append(e)
+
+        if not await self._run_blocking(_wrapper, timeout=timeout):
+            raise TimeoutError(f"Timed out waiting for FLIPRO SDK call after {timeout}s.")
+        value = outcome[0]
+        if isinstance(value, BaseException):
+            raise value
+        return cast(_T, value)
+
     async def open(self) -> None:
         """Open module."""
         await BaseCamera.open(self)
         from .fliprodriver import FliProDriver
 
-        # list devices
-        devices = FliProDriver.list_devices()
-        if len(devices) == 0:
-            raise ValueError("No camera found.")
+        def _connect() -> None:
+            # list devices
+            devices = FliProDriver.list_devices()
+            if len(devices) == 0:
+                raise ValueError("No camera found.")
 
-        # open first one
-        self._device = devices[0]
-        self._log_device_info()
-        log.info('Opening connection to "%s"...', self._device.friendly_name)
-        self._driver = FliProDriver(self._device)
-        try:
-            self._driver.open()
-        except ValueError as e:
-            raise ValueError(f"Could not open FLIPRO camera: {e}")
+            # open first one
+            self._device = devices[0]
+            self._log_device_info()
+            log.info('Opening connection to "%s"...', self._device.friendly_name)
+            self._driver = FliProDriver(self._device)
+            try:
+                self._driver.open()
+            except ValueError as e:
+                raise ValueError(f"Could not open FLIPRO camera: {e}")
 
-        # get caps
-        self._caps = self._driver.get_capabilities()
-        self._log_capabilities()
+            # get caps
+            self._caps = self._driver.get_capabilities()
+            self._log_capabilities()
 
-        # store full frame from caps
-        self._full_frame = (0, 0, self._caps.uiMaxPixelImageWidth, self._caps.uiMaxPixelImageHeight)
+            # store full frame from caps
+            self._full_frame = (0, 0, self._caps.uiMaxPixelImageWidth, self._caps.uiMaxPixelImageHeight)
+
+        await self._run_blocking_or_raise(_connect)
 
         # set cooling
         if self._temp_setpoint is not None:
             await self.set_cooling(True, self._temp_setpoint)
 
         # get window and binning from driver
-        self._window = self._driver.get_image_area()
-        self._binning = self._driver.get_binning()
+        def _get_window_binning() -> None:
+            assert self._driver is not None
+            self._window = self._driver.get_image_area()
+            self._binning = self._driver.get_binning()
+
+        await self._run_blocking_or_raise(_get_window_binning)
 
         # publish capabilities and initial states
         await self.comm.set_capabilities(
@@ -114,8 +187,10 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
         await BaseCamera.close(self)
 
         if self._driver is not None:
-            self._driver.close()
+            driver = self._driver
             self._driver = None
+            if not await self._run_blocking(driver.close):
+                log.error("Timed out closing FLIPRO camera after %.1fs.", _SDK_CALL_TIMEOUT)
 
     def _log_device_info(self) -> None:
         log.info("Device info:")
@@ -166,30 +241,36 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
         # check driver
         if self._driver is None:
             raise ValueError("No camera driver.")
+        driver = self._driver
 
-        # set binning
-        log.info("Set binning to %dx%d.", self._binning[0], self._binning[1])
-        self._driver.set_binning(*self._binning)
+        def _start() -> int:
+            # set binning
+            log.info("Set binning to %dx%d.", self._binning[0], self._binning[1])
+            driver.set_binning(*self._binning)
 
-        # set window, size is given in unbinned pixels
-        width = int(math.floor(self._window[2]) / self._binning[0])
-        height = int(math.floor(self._window[3]) / self._binning[1])
-        log.info(
-            "Set window to %dx%d (binned %dx%d) at %d,%d.",
-            self._window[2],
-            self._window[3],
-            width,
-            height,
-            self._window[0],
-            self._window[1],
-        )
-        self._driver.set_image_area(self._window[0], self._window[1], self._window[2], self._window[3])
+            # set window, size is given in unbinned pixels
+            width = int(math.floor(self._window[2]) / self._binning[0])
+            height = int(math.floor(self._window[3]) / self._binning[1])
+            log.info(
+                "Set window to %dx%d (binned %dx%d) at %d,%d.",
+                self._window[2],
+                self._window[3],
+                width,
+                height,
+                self._window[0],
+                self._window[1],
+            )
+            driver.set_image_area(self._window[0], self._window[1], self._window[2], self._window[3])
 
-        # set exposure time
-        self._driver.set_exposure_time(int(exposure_time * 1e9))
+            # set exposure time
+            driver.set_exposure_time(int(exposure_time * 1e9))
 
-        # calculate frame size
-        frame_size = self._driver.get_frame_size()
+            # calculate frame size
+            frame_size = driver.get_frame_size()
+
+            # start exposure
+            driver.start_exposure()
+            return frame_size
 
         # get date obs
         log.info(
@@ -197,8 +278,7 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
         )
         date_obs = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")
 
-        # start exposure
-        self._driver.start_exposure()
+        frame_size = await self._run_blocking_or_raise(_start)
 
         # wait exposure
         await self._wait_exposure(abort_event, exposure_time, open_shutter)
@@ -206,19 +286,27 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
         # readout
         log.info("Exposure finished, reading out...")
         await self._change_exposure_status(ExposureStatus.READOUT)
-        img = self._driver.read_exposure(frame_size)
-        self._driver.stop_exposure()
+
+        def _readout() -> tuple[Any, float, float, float]:
+            img = driver.read_exposure(frame_size)
+            driver.stop_exposure()
+            temp = driver.get_sensor_temperature()
+            cooler_duty = driver.get_cooler_duty_cycle()
+            temp_set = driver.get_temperature_set_point()
+            return img, temp, cooler_duty, temp_set
+
+        img, temp, cooler_duty, temp_set = await self._run_blocking_or_raise(_readout, timeout=_READOUT_TIMEOUT)
 
         # create FITS image and set header
         image = Image(img)
         image.header["DATE-OBS"] = (date_obs, "Date and time of start of exposure")
         image.header["EXPTIME"] = (exposure_time, "Exposure time [s]")
-        image.header["DET-TEMP"] = (self._driver.get_sensor_temperature(), "CCD temperature [C]")
-        image.header["DET-COOL"] = (self._driver.get_cooler_duty_cycle(), "Cooler power [percent]")
-        image.header["DET-TSET"] = (self._driver.get_temperature_set_point(), "Cooler setpoint [C]")
+        image.header["DET-TEMP"] = (temp, "CCD temperature [C]")
+        image.header["DET-COOL"] = (cooler_duty, "Cooler power [percent]")
+        image.header["DET-TSET"] = (temp_set, "Cooler setpoint [C]")
 
         # instrument and detector
-        dev = self._driver.device
+        dev = driver.device
         image.header["INSTRUME"] = (f"{dev.friendly_name} {dev.serial_number}", "Name of instrument")
 
         # binning
@@ -243,17 +331,30 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
 
     async def _wait_exposure(self, abort_event: asyncio.Event, exposure_time: float, open_shutter: bool) -> None:
         """Wait for exposure to finish."""
-        while not self._driver.is_available():
-            if abort_event.is_set():
-                await self._change_exposure_status(ExposureStatus.IDLE)
-                raise InterruptedError("Aborted exposure.")
-            await asyncio.sleep(0.01)
+        if self._driver is None:
+            raise ValueError("No camera driver.")
+        driver = self._driver
+
+        # run the whole "poll until ready" loop as a single blocking call (see _run_blocking),
+        # rather than polling is_available() every 10ms directly on the event loop
+        def _wait() -> bool:
+            while not driver.is_available():
+                if abort_event.is_set():
+                    return True
+                time.sleep(0.01)
+            return False
+
+        exposure_timeout = exposure_time + _EXPOSURE_WAIT_MARGIN
+        aborted = await self._run_blocking_or_raise(_wait, timeout=exposure_timeout)
+        if aborted:
+            await self._change_exposure_status(ExposureStatus.IDLE)
+            raise InterruptedError("Aborted exposure.")
 
     async def _abort_exposure(self) -> None:
         """Abort the running exposure."""
         if self._driver is None:
             raise ValueError("No camera driver.")
-        self._driver.cancel_exposure()
+        await self._run_blocking_or_raise(self._driver.cancel_exposure)
 
     async def set_window(self, left: int, top: int, width: int, height: int, **kwargs: Any) -> None:
         """Set the camera window.
@@ -288,6 +389,7 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
         """
         if self._driver is None:
             raise ValueError("No camera driver.")
+        driver = self._driver
 
         if enabled:
             log.info("Enabling cooling with a setpoint of %.2f°C...", setpoint)
@@ -295,7 +397,11 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
             log.info("Disabling cooling and setting setpoint to 20°C...")
 
         actual_setpoint = float(setpoint) if setpoint is not None else 20.0
-        self._driver.set_temperature_set_point(actual_setpoint)
+
+        def _set() -> None:
+            driver.set_temperature_set_point(actual_setpoint)
+
+        await self._run_blocking_or_raise(_set)
         self._cooling_enabled = enabled
         await self.comm.set_state(ICooling, CoolingState(setpoint=actual_setpoint, power=None, enabled=enabled))
 
@@ -304,9 +410,16 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
         while True:
             try:
                 if self._driver is not None:
-                    setpoint = self._driver.get_temperature_set_point()
-                    duty = self._driver.get_cooler_duty_cycle()
-                    _, t_base, t_cooler = self._driver.get_temperatures()
+                    driver = self._driver
+
+                    def _poll() -> tuple[float, float, tuple[Any, float, float]]:
+                        setpoint = driver.get_temperature_set_point()
+                        duty = driver.get_cooler_duty_cycle()
+                        temps = driver.get_temperatures()
+                        return setpoint, duty, temps
+
+                    setpoint, duty, (_, t_base, t_cooler) = await self._run_blocking_or_raise(_poll)
+
                     await self.comm.set_state(
                         ICooling, CoolingState(setpoint=setpoint, power=round(duty), enabled=self._cooling_enabled)
                     )
