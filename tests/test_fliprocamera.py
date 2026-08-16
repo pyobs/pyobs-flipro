@@ -6,8 +6,10 @@ Hardware I/O (opening, exposing, reading out) is out of scope here.
 
 import asyncio
 import threading
+from unittest.mock import AsyncMock
 
 import pytest
+from pyobs.interfaces import IBinning, IWindow
 
 from pyobs_flipro import FliProCamera
 
@@ -25,15 +27,29 @@ def test_constructor_defaults() -> None:
 @pytest.mark.asyncio
 async def test_set_window() -> None:
     camera = FliProCamera(-20.0)
+    camera.comm.set_state = AsyncMock()  # type: ignore[method-assign]
+
     await camera.set_window(10, 20, 100, 200)
+
     assert camera._window == (10, 20, 100, 200)
+    assert camera.comm.set_state.await_args is not None
+    interface, state = camera.comm.set_state.await_args.args
+    assert interface is IWindow
+    assert (state.x, state.y, state.width, state.height) == (10, 20, 100, 200)
 
 
 @pytest.mark.asyncio
 async def test_set_binning() -> None:
     camera = FliProCamera(-20.0)
-    await camera.set_binning(2, 2)
-    assert camera._binning == (2, 2)
+    camera.comm.set_state = AsyncMock()  # type: ignore[method-assign]
+
+    await camera.set_binning(2, 3)
+
+    assert camera._binning == (2, 3)
+    assert camera.comm.set_state.await_args is not None
+    interface, state = camera.comm.set_state.await_args.args
+    assert interface is IBinning
+    assert (state.x, state.y) == (2, 3)
 
 
 @pytest.mark.asyncio
