@@ -10,7 +10,7 @@ from typing import Any, TypeVar, cast
 import numpy as np
 from pyobs.images import Image
 from pyobs.interfaces import IAbortable, IBinning, ICamera, ICooling, ITemperatures, IWindow
-from pyobs.interfaces.IBinning import BinningCapabilities, BinningState
+from pyobs.interfaces.IBinning import Binning, BinningCapabilities, BinningState
 from pyobs.interfaces.ICooling import CoolingState
 from pyobs.interfaces.ITemperatures import SensorReading, TemperaturesState
 from pyobs.interfaces.IWindow import WindowCapabilities, WindowState
@@ -173,10 +173,10 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
             IBinning,
             BinningCapabilities(
                 binnings=[
-                    BinningState(x=1, y=1),
-                    BinningState(x=2, y=2),
-                    BinningState(x=3, y=3),
-                    BinningState(x=4, y=4),
+                    Binning(x=1, y=1),
+                    Binning(x=2, y=2),
+                    Binning(x=3, y=3),
+                    Binning(x=4, y=4),
                 ]
             ),
         )
