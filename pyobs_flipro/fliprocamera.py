@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 import math
@@ -5,17 +7,20 @@ import threading
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 import numpy as np
 from pyobs.images import Image
 from pyobs.interfaces import IAbortable, IBinning, ICamera, ICooling, ITemperatures, IWindow
-from pyobs.interfaces.IBinning import BinningCapabilities, BinningState
+from pyobs.interfaces.IBinning import Binning, BinningCapabilities, BinningState
 from pyobs.interfaces.ICooling import CoolingState
 from pyobs.interfaces.ITemperatures import SensorReading, TemperaturesState
 from pyobs.interfaces.IWindow import WindowCapabilities, WindowState
 from pyobs.modules.camera.basecamera import BaseCamera
 from pyobs.utils.enums import ExposureStatus
+
+if TYPE_CHECKING:
+    from .fliprodriver import DeviceCaps, DeviceInfo, FliProDriver
 
 log = logging.getLogger(__name__)
 
@@ -46,7 +51,6 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
             setpoint: Cooling temperature setpoint.
         """
         BaseCamera.__init__(self, **kwargs)
-        from .fliprodriver import DeviceCaps, DeviceInfo, FliProDriver  # type: ignore
 
         # variables
         self._driver: FliProDriver | None = None
@@ -173,10 +177,10 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
             IBinning,
             BinningCapabilities(
                 binnings=[
-                    BinningState(x=1, y=1),
-                    BinningState(x=2, y=2),
-                    BinningState(x=3, y=3),
-                    BinningState(x=4, y=4),
+                    Binning(x=1, y=1),
+                    Binning(x=2, y=2),
+                    Binning(x=3, y=3),
+                    Binning(x=4, y=4),
                 ]
             ),
         )
