@@ -20,22 +20,22 @@ cdef class DeviceInfo:
     def __init__(self, obj):
         self.obj = obj
 
-    def __decode(self, w):
-        b = bytes(w)
-        b = b[:b.index(b"\x00")]
-        return b.decode('utf-8')
+    cdef str _decode(self, wchar_t* buf):
+        # buf is a NUL-terminated wide string; decode it as such rather than as a narrow C string
+        # (which would truncate at the zero padding byte after the first character)
+        return PyUnicode_FromWideChar(buf, -1)
 
     @property
     def friendly_name(self):
-        return self.__decode(self.obj.cFriendlyName)
+        return self._decode(self.obj.cFriendlyName)
 
     @property
     def serial_number(self):
-        return self.__decode(self.obj.cSerialNo)
+        return self._decode(self.obj.cSerialNo)
 
     @property
     def device_path(self):
-        return self.__decode(self.obj.cDevicePath)
+        return self._decode(self.obj.cDevicePath)
 
     @property
     def conn_type(self):
