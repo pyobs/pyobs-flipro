@@ -4,7 +4,7 @@ from collections import namedtuple
 from enum import Enum
 from typing import Tuple, List, Optional
 from libc.stdlib cimport malloc, free
-from libc.string cimport memcpy
+from libc.string cimport memcpy, memset
 
 import numpy as np
 cimport numpy as np
@@ -94,7 +94,13 @@ cdef class FliProDriver:
         cdef wchar_t[100] version
         cdef uint32_t length = 100
 
+        memset(version, 0, sizeof(version))
         success = FPROCam_GetAPIVersion(version, length)
+        if success < 0:
+            raise ValueError('Could not fetch API version.')
+        b = bytes(version)
+        b = b[:b.index(b"\x00")]
+        return b.decode('utf-8')
 
     @staticmethod
     def list_devices() -> List[DeviceInfo]:

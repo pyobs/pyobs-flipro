@@ -66,6 +66,10 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
         # cooling state
         self._cooling_enabled = False
 
+        # serializes all FLIPRO SDK calls; the SDK's own thread-safety is unverified, and the
+        # cooling-poll task and exposure threads share the same handle.
+        self._sdk_lock = threading.Lock()
+
         # background task for polling cooling/temperature
         self.add_background_task(self._poll_cooling)
 
@@ -78,6 +82,9 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
 
         Returns:
             True if func completed within timeout, False if it's still running in the background.
+
+        Raises:
+            The exception raised by func, if any.
         """
         loop = asyncio.get_running_loop()
         future: asyncio.Future[None] = loop.create_future()
@@ -85,7 +92,9 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
         def _wrapper() -> None:
             try:
                 func()
-            finally:
+            except BaseException as e:
+                loop.call_soon_threadsafe(future.set_exception, e)
+            else:
                 loop.call_soon_threadsafe(future.set_result, None)
 
         threading.Thread(target=_wrapper, daemon=True).start()
@@ -106,10 +115,11 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
         outcome: list[Any] = []
 
         def _wrapper() -> None:
-            try:
-                outcome.append(func())
-            except BaseException as e:
-                outcome.append(e)
+            with self._sdk_lock:
+                try:
+                    outcome.append(func())
+                except BaseException as e:
+                    outcome.append(e)
 
         if not await self._run_blocking(_wrapper, timeout=timeout):
             raise TimeoutError(f"Timed out waiting for FLIPRO SDK call after {timeout}s.")
@@ -140,7 +150,12 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
                 raise ValueError(f"Could not open FLIPRO camera: {e}")
 
             # get caps
-            self._caps = self._driver.get_capabilities()
+            try:
+                self._caps = self._driver.get_capabilities()
+            except Exception:
+                self._driver.close()
+                self._driver = None
+                raise
             self._log_capabilities()
 
             # store full frame from caps
@@ -193,8 +208,16 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
         if self._driver is not None:
             driver = self._driver
             self._driver = None
-            if not await self._run_blocking(driver.close):
-                log.error("Timed out closing FLIPRO camera after %.1fs.", _SDK_CALL_TIMEOUT)
+
+            def _close() -> None:
+                with self._sdk_lock:
+                    driver.close()
+
+            try:
+                if not await self._run_blocking(_close):
+                    log.error("Timed out closing FLIPRO camera after %.1fs.", _SDK_CALL_TIMEOUT)
+            except Exception:
+                log.exception("Failed to close FLIPRO camera.")
 
     def _log_device_info(self) -> None:
         log.info("Device info:")
@@ -358,7 +381,7 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
         """Abort the running exposure."""
         if self._driver is None:
             raise ValueError("No camera driver.")
-        await self._run_blocking_or_raise(self._driver.cancel_exposure)
+        await self._run_blocking_or_raise(self._driver.stop_exposure)
 
     async def set_window(self, left: int, top: int, width: int, height: int, **kwargs: Any) -> None:
         """Set the camera window.

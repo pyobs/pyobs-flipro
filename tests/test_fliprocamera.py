@@ -83,6 +83,15 @@ async def test_run_blocking_times_out() -> None:
 
 
 @pytest.mark.asyncio
+async def test_run_blocking_reraises() -> None:
+    def boom() -> None:
+        raise ValueError("boom")
+
+    with pytest.raises(ValueError):
+        await FliProCamera._run_blocking(boom)
+
+
+@pytest.mark.asyncio
 async def test_run_blocking_or_raise_returns_value() -> None:
     camera = FliProCamera(-20.0)
     assert await camera._run_blocking_or_raise(lambda: 42) == 42
