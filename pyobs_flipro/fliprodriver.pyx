@@ -3,6 +3,7 @@
 from collections import namedtuple
 from enum import Enum
 from typing import Tuple, List, Optional
+from cpython.unicode cimport PyUnicode_FromWideChar
 from libc.stdlib cimport malloc, free
 from libc.string cimport memcpy, memset
 
@@ -98,9 +99,10 @@ cdef class FliProDriver:
         success = FPROCam_GetAPIVersion(version, length)
         if success < 0:
             raise ValueError('Could not fetch API version.')
-        b = bytes(version)
-        b = b[:b.index(b"\x00")]
-        return b.decode('utf-8')
+        # version is a wchar_t buffer; treat it as a NUL-terminated wide string rather than a
+        # narrow C string, so multi-byte wchar_t code units (4 bytes on Linux) don't truncate
+        # the result at the first zero padding byte after the first character
+        return PyUnicode_FromWideChar(<wchar_t*>version, -1)
 
     @staticmethod
     def list_devices() -> List[DeviceInfo]:
