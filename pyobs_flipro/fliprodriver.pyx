@@ -3,8 +3,9 @@
 from collections import namedtuple
 from enum import Enum
 from typing import Tuple, List, Optional
+from cpython.unicode cimport PyUnicode_FromWideChar
 from libc.stdlib cimport malloc, free
-from libc.string cimport memcpy
+from libc.string cimport memcpy, memset
 
 import numpy as np
 cimport numpy as np
@@ -19,22 +20,22 @@ cdef class DeviceInfo:
     def __init__(self, obj):
         self.obj = obj
 
-    def __decode(self, w):
-        b = bytes(w)
-        b = b[:b.index(b"\x00")]
-        return b.decode('utf-8')
+    cdef str _decode(self, wchar_t* buf):
+        # buf is a NUL-terminated wide string; decode it as such rather than as a narrow C string
+        # (which would truncate at the zero padding byte after the first character)
+        return PyUnicode_FromWideChar(buf, -1)
 
     @property
     def friendly_name(self):
-        return self.__decode(self.obj.cFriendlyName)
+        return self._decode(self.obj.cFriendlyName)
 
     @property
     def serial_number(self):
-        return self.__decode(self.obj.cSerialNo)
+        return self._decode(self.obj.cSerialNo)
 
     @property
     def device_path(self):
-        return self.__decode(self.obj.cDevicePath)
+        return self._decode(self.obj.cDevicePath)
 
     @property
     def conn_type(self):
@@ -94,7 +95,14 @@ cdef class FliProDriver:
         cdef wchar_t[100] version
         cdef uint32_t length = 100
 
+        memset(version, 0, sizeof(version))
         success = FPROCam_GetAPIVersion(version, length)
+        if success < 0:
+            raise ValueError('Could not fetch API version.')
+        # version is a wchar_t buffer; treat it as a NUL-terminated wide string rather than a
+        # narrow C string, so multi-byte wchar_t code units (4 bytes on Linux) don't truncate
+        # the result at the first zero padding byte after the first character
+        return PyUnicode_FromWideChar(<wchar_t*>version, -1)
 
     @staticmethod
     def list_devices() -> List[DeviceInfo]:
