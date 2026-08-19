@@ -3,7 +3,7 @@ from libc.stddef cimport wchar_t
 from libcpp cimport bool
 
 
-cdef extern from "../lib/libflipro.h":
+cdef extern from "../lib/libflipro.h" nogil:
     ctypedef int32_t LIBFLIPRO_API
     ctypedef void LIBFLIPRO_VOID
 
