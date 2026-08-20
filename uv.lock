@@ -2366,7 +2366,7 @@ gui = [
 
 [[package]]
 name = "pyobs-flipro"
-version = "2.0.0.dev9"
+version = "2.0.0.dev10"
 source = { editable = "." }
 dependencies = [
     { name = "astropy" },
