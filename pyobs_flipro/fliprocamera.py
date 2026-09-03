@@ -314,21 +314,25 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
         log.info("Exposure finished, reading out...")
         await self._change_exposure_status(ExposureStatus.READOUT)
 
-        def _readout() -> tuple[Any, float, float, float]:
+        def _readout() -> tuple[Any, float, float, float, float]:
             img = driver.read_exposure(frame_size)
             driver.stop_exposure()
             temp = driver.get_sensor_temperature()
             cooler_duty = driver.get_cooler_duty_cycle()
             temp_set = driver.get_temperature_set_point()
-            return img, temp, cooler_duty, temp_set
+            _, temp_base, _ = driver.get_temperatures()
+            return img, temp, cooler_duty, temp_set, temp_base
 
-        img, temp, cooler_duty, temp_set = await self._run_blocking_or_raise(_readout, timeout=_READOUT_TIMEOUT)
+        img, temp, cooler_duty, temp_set, temp_base = await self._run_blocking_or_raise(
+            _readout, timeout=_READOUT_TIMEOUT
+        )
 
         # create FITS image and set header
         image = Image(img)
         image.header["DATE-OBS"] = (date_obs, "Date and time of start of exposure")
         image.header["EXPTIME"] = (exposure_time, "Exposure time [s]")
         image.header["DET-TEMP"] = (temp, "CCD temperature [C]")
+        image.header["DET-TBAS"] = (temp_base, "Base plate temperature [C]")
         image.header["DET-COOL"] = (cooler_duty, "Cooler power [percent]")
         image.header["DET-TSET"] = (temp_set, "Cooler setpoint [C]")
 
