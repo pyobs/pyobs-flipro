@@ -60,6 +60,31 @@ async def test_set_cooling_requires_driver() -> None:
 
 
 @pytest.mark.asyncio
+async def test_full_reset_restores_cooling() -> None:
+    camera = FliProCamera(-15.0)
+    camera.reset = AsyncMock()  # type: ignore[method-assign]
+    camera.set_cooling = AsyncMock()  # type: ignore[method-assign]
+
+    await camera.full_reset()
+
+    camera.reset.assert_awaited_once()
+    camera.set_cooling.assert_awaited_once_with(True, -15.0)
+
+
+@pytest.mark.asyncio
+async def test_full_reset_skips_cooling_when_no_setpoint() -> None:
+    camera = FliProCamera(-15.0)
+    camera._temp_setpoint = None
+    camera.reset = AsyncMock()  # type: ignore[method-assign]
+    camera.set_cooling = AsyncMock()  # type: ignore[method-assign]
+
+    await camera.full_reset()
+
+    camera.reset.assert_awaited_once()
+    camera.set_cooling.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_run_blocking_runs_func_and_returns_true() -> None:
     ran: list[bool] = []
 
