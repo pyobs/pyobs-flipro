@@ -163,10 +163,6 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
 
         await self._run_blocking_or_raise(_connect)
 
-        # set cooling
-        if self._temp_setpoint is not None:
-            await self.set_cooling(True, self._temp_setpoint)
-
         # get window and binning from driver
         def _get_window_binning() -> None:
             assert self._driver is not None
@@ -200,6 +196,12 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
             ),
         )
         await self.comm.set_state(IBinning, BinningState(x=self._binning[0], y=self._binning[1]))
+
+    async def full_reset(self, **kwargs: Any) -> None:
+        """Reset the device completely, including cooling."""
+        await self.reset(**kwargs)
+        if self._temp_setpoint is not None:
+            await self.set_cooling(True, self._temp_setpoint)
 
     async def close(self) -> None:
         """Close the module."""
