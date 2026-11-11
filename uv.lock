@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
@@ -1947,7 +1947,7 @@ wheels = [
 
 [[package]]
 name = "pyobs-core"
-version = "2.14.2"
+version = "2.24.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1967,9 +1967,9 @@ dependencies = [
     { name = "slixmpp" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/77/f4/cd60d6926418ad80de229ae05dc39376a915d6de810ae413ec0e306f01e3/pyobs_core-2.14.2.tar.gz", hash = "sha256:6165c4918041022822d801c798efb3a99c42dca2770f02b210b9695360e02f6a", size = 453379, upload-time = "2026-10-04T19:49:16.037Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c8/eb/0f7aab9d264a9843a32a5cd9e6cacdeb0d90d16ff68265621d7c8bae9f51/pyobs_core-2.24.0.tar.gz", hash = "sha256:33feb1303d820f0c8f0a2861a4db0ce1955147884f88356a3a60b8cc4da66188", size = 468820, upload-time = "2026-11-11T14:27:17.866Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/07/41/73b2a968ef4bb911c25cf4fcfc84acc4e2b3075569d98397a3d1cab0a7d9/pyobs_core-2.14.2-py3-none-any.whl", hash = "sha256:561664df48deaf96bf8abdfc193c8fdc541370fba5fab835b127144ca13a88e0", size = 692297, upload-time = "2026-10-04T19:49:14.703Z" },
+    { url = "https://files.pythonhosted.org/packages/11/7e/ef6b89804e32bf1de948fad15b5d7159c0e28ecfdc3fe1b7ab011e1d2551/pyobs_core-2.24.0-py3-none-any.whl", hash = "sha256:6505ecdb91cc733245fb8fbbf53681074569d3cd2a0a3cb67d13c783a0a82023", size = 711844, upload-time = "2026-11-11T14:27:15.749Z" },
 ]
 
 [package.optional-dependencies]
@@ -2010,8 +2010,8 @@ dev = [
 requires-dist = [
     { name = "astropy", specifier = ">=7.0.1,<8" },
     { name = "numpy", specifier = ">=2.2.5,<3" },
-    { name = "pyobs-core", specifier = ">=2.11.0,<3" },
-    { name = "pyobs-core", extras = ["gui"], marker = "extra == 'gui'", specifier = ">=2.11.0,<3" },
+    { name = "pyobs-core", specifier = ">=2.24.0,<3" },
+    { name = "pyobs-core", extras = ["gui"], marker = "extra == 'gui'", specifier = ">=2.24.0,<3" },
     { name = "qasync", marker = "extra == 'gui'", specifier = ">=0.27" },
 ]
 provides-extras = ["gui"]
