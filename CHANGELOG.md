@@ -9,6 +9,11 @@ Entries for releases before this file existed were generated from commit subject
 
 ## [Unreleased]
 
+- Switching cooling off sets the camera to the off temperature (20 degC by default) or, if the sensor is warmer than
+  that, to just above the sensor, so that the cooler does not keep cooling below ambient. A setpoint below the off
+  temperature counts as cooler on, also after a restart of the module, so that switching it off warms up first.
+  Errors when polling the cooling status are logged (once, until it works again) instead of being ignored. Needs
+  pyobs-core 2.27.0.
 - `FliProCamera` ramps the cooling setpoint with pyobs-core's `CoolingRampMixin` (needs pyobs-core 2.24.0).
   `set_cooling` returns at once and the setpoint is stepped in the background, including warming up before cooling
   is disabled (the camera is then set to 20 degC, as before). Rates and step are set with `cooling_rate_warm`
