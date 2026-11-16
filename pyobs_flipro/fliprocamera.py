@@ -421,8 +421,9 @@ class FliProCamera(CoolingRampMixin, BaseCamera, ICamera, IAbortable, IWindow, I
             raise ValueError("No camera driver.")
         driver = self._driver
 
-        # the camera has no off switch, so cooling is disabled by setting 20 degC
-        actual_setpoint = float(setpoint) if enabled and setpoint is not None else 20.0
+        # the camera has no off switch, so cooling is disabled by setting the off temperature (or just above the
+        # sensor, if that is warmer, so that the cooler does not cool below ambient)
+        actual_setpoint = float(setpoint) if enabled and setpoint is not None else await self._off_value()
 
         def _set() -> None:
             driver.set_temperature_set_point(actual_setpoint)
@@ -440,7 +441,18 @@ class FliProCamera(CoolingRampMixin, BaseCamera, ICamera, IAbortable, IWindow, I
             return driver.get_temperature_set_point(), driver.get_cooler_duty_cycle()
 
         setpoint, duty = await self._run_blocking_or_raise(_get)
-        return self._cooling_enabled, float(setpoint), round(duty)
+        # a setpoint below the off temperature means that the cooler is on, e.g. after a restart of the module
+        enabled = self._cooling_enabled or float(setpoint) < self._cooling_ramp.off_temperature
+        return enabled, float(setpoint), round(duty)
+
+    async def _off_value(self) -> float:
+        """Setpoint that stands for "off": the off temperature, or just above the sensor if that is warmer."""
+        try:
+            sensor = await self._get_sensor_temperature()
+        except Exception as e:
+            log.warning("Could not read the sensor temperature for switching off: %s", e)
+            sensor = None
+        return self._cooling_ramp.off_setpoint(sensor)
 
     async def _get_sensor_temperature(self) -> float | None:
         if self._driver is None:
@@ -452,6 +464,7 @@ class FliProCamera(CoolingRampMixin, BaseCamera, ICamera, IAbortable, IWindow, I
 
     async def _poll_cooling(self) -> None:
         """Background task: periodically reads cooling status and publishes ICooling and ITemperatures state."""
+        failed = False
         while True:
             try:
                 if self._driver is not None:
@@ -477,8 +490,14 @@ class FliProCamera(CoolingRampMixin, BaseCamera, ICamera, IAbortable, IWindow, I
                             ]
                         ),
                     )
-            except Exception:
-                pass
+            except Exception as e:
+                if not failed:
+                    log.warning("Could not read the cooling status: %s", e)
+                failed = True
+            else:
+                if failed:
+                    log.info("Reading the cooling status works again.")
+                failed = False
             await asyncio.sleep(10)
 
 

@@ -179,7 +179,7 @@ async def test_ramp_starts_at_sensor_temperature_and_steps_down() -> None:
 
 
 @pytest.mark.asyncio
-async def test_disable_after_cooling_warms_up_then_sets_20() -> None:
+async def test_disable_after_cooling_warms_up_then_sets_off_value() -> None:
     camera = make_cooling_camera(sensor=5.0)
     await camera.set_cooling(True, 3.0)
     while camera.cooling_ramping:
@@ -194,5 +194,41 @@ async def test_disable_after_cooling_warms_up_then_sets_20() -> None:
 
     values = [c.args[0] for c in camera._driver.set_temperature_set_point.call_args_list]  # type: ignore[union-attr]
     assert values[0] == 4.0  # raised step by step first
-    assert values[-1] == 20.0
+    assert values[-1] == 21.5  # just above the sensor, which follows the setpoint to 20.5 degC
     assert camera._cooling_enabled is False
+
+
+@pytest.mark.asyncio
+async def test_disable_with_warm_ambient_stays_above_sensor() -> None:
+    camera = make_cooling_camera(sensor=24.0)  # setpoint is 20 degC, but ambient is warmer
+    camera._cooling_enabled = True
+    await camera.set_cooling(False, None)  # type: ignore[arg-type]
+    while camera.cooling_ramping:
+        await camera._cooling_tick()
+
+    values = [c.args[0] for c in camera._driver.set_temperature_set_point.call_args_list]  # type: ignore[union-attr]
+    assert values[-1] == 25.0  # not 20 degC, which would cool 4 K below ambient
+
+
+@pytest.mark.asyncio
+async def test_cooler_is_on_when_setpoint_is_below_off_temperature() -> None:
+    camera = make_cooling_camera(sensor=-20.0)
+    camera._driver.get_temperature_set_point.side_effect = lambda: -20.0  # type: ignore[union-attr]
+    assert (await camera._get_cooling_hardware())[0] is True  # e.g. after a restart of the module
+
+    camera._driver.get_temperature_set_point.side_effect = lambda: 20.0  # type: ignore[union-attr]
+    assert (await camera._get_cooling_hardware())[0] is False
+
+
+@pytest.mark.asyncio
+async def test_poll_cooling_logs_a_failure_once(caplog: pytest.LogCaptureFixture) -> None:
+    from unittest.mock import patch
+
+    camera = make_cooling_camera()
+    camera._driver.get_temperatures.side_effect = RuntimeError("no camera")  # type: ignore[union-attr]
+    with patch(
+        "pyobs_flipro.fliprocamera.asyncio.sleep", AsyncMock(side_effect=[None, None, asyncio.CancelledError()])
+    ):
+        with caplog.at_level("INFO"), pytest.raises(asyncio.CancelledError):
+            await camera._poll_cooling()
+    assert [r.levelname for r in caplog.records if "cooling status" in r.getMessage()] == ["WARNING"]
