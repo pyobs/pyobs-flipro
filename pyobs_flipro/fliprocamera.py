@@ -13,9 +13,9 @@ import numpy as np
 from pyobs.images import Image
 from pyobs.interfaces import IAbortable, IBinning, ICamera, ICooling, ITemperatures, IWindow
 from pyobs.interfaces.IBinning import Binning, BinningCapabilities, BinningState
-from pyobs.interfaces.ICooling import CoolingState
 from pyobs.interfaces.ITemperatures import SensorReading, TemperaturesState
 from pyobs.interfaces.IWindow import WindowCapabilities, WindowState
+from pyobs.mixins import CoolingRampMixin
 from pyobs.modules.camera.basecamera import BaseCamera
 from pyobs.utils.enums import ExposureStatus
 
@@ -39,7 +39,7 @@ _READOUT_TIMEOUT = 30.0
 _EXPOSURE_WAIT_MARGIN = 30.0
 
 
-class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling, ITemperatures):
+class FliProCamera(CoolingRampMixin, BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling, ITemperatures):
     """A pyobs module for FLIPRO cameras."""
 
     __module__ = "pyobs_flipro"
@@ -47,10 +47,13 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
     def __init__(self, setpoint: float, **kwargs: Any):
         """Initializes a new FliProCamera.
 
+        The cooling setpoint is ramped by CoolingRampMixin, see its cooling_* options (cooling_rate_warm,
+        cooling_rate_cool, cooling_ramp_step, ...).
+
         Args:
-            setpoint: Cooling temperature setpoint.
+            setpoint: Cooling temperature setpoint that full_reset() cools to.
         """
-        BaseCamera.__init__(self, **kwargs)
+        CoolingRampMixin.__init__(self, **kwargs)
 
         # variables
         self._driver: FliProDriver | None = None
@@ -205,7 +208,7 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
 
     async def close(self) -> None:
         """Close the module."""
-        await BaseCamera.close(self)
+        await super().close()
 
         if self._driver is not None:
             driver = self._driver
@@ -413,30 +416,39 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
         log.info("Setting binning to %dx%d...", x, y)
         await self.comm.set_state(IBinning, BinningState(x=x, y=y))
 
-    async def set_cooling(self, enabled: bool, setpoint: float | None, **kwargs: Any) -> None:
-        """Enables/disables cooling and sets setpoint.
-
-        Args:
-            enabled: Enable or disable cooling.
-            setpoint: Setpoint in celsius for the cooling.
-        """
+    async def _set_cooling_hardware(self, enabled: bool, setpoint: float | None) -> None:
         if self._driver is None:
             raise ValueError("No camera driver.")
         driver = self._driver
 
-        if enabled:
-            log.info("Enabling cooling with a setpoint of %.2f°C...", setpoint)
-        else:
-            log.info("Disabling cooling and setting setpoint to 20°C...")
-
-        actual_setpoint = float(setpoint) if setpoint is not None else 20.0
+        # the camera has no off switch, so cooling is disabled by setting 20 degC
+        actual_setpoint = float(setpoint) if enabled and setpoint is not None else 20.0
 
         def _set() -> None:
             driver.set_temperature_set_point(actual_setpoint)
 
         await self._run_blocking_or_raise(_set)
         self._cooling_enabled = enabled
-        await self.comm.set_state(ICooling, CoolingState(setpoint=actual_setpoint, power=None, enabled=enabled))
+        await self.comm.set_state(ICooling, self._cooling_state(None, enabled, actual_setpoint))
+
+    async def _get_cooling_hardware(self) -> tuple[bool, float | None, int | None]:
+        if self._driver is None:
+            raise ValueError("No camera driver.")
+        driver = self._driver
+
+        def _get() -> tuple[float, float]:
+            return driver.get_temperature_set_point(), driver.get_cooler_duty_cycle()
+
+        setpoint, duty = await self._run_blocking_or_raise(_get)
+        return self._cooling_enabled, float(setpoint), round(duty)
+
+    async def _get_sensor_temperature(self) -> float | None:
+        if self._driver is None:
+            raise ValueError("No camera driver.")
+        driver = self._driver
+
+        _, _, t_cooler = await self._run_blocking_or_raise(driver.get_temperatures)
+        return float(t_cooler)
 
     async def _poll_cooling(self) -> None:
         """Background task: periodically reads cooling status and publishes ICooling and ITemperatures state."""
@@ -454,7 +466,7 @@ class FliProCamera(BaseCamera, ICamera, IAbortable, IWindow, IBinning, ICooling,
                     setpoint, duty, (_, t_base, t_cooler) = await self._run_blocking_or_raise(_poll)
 
                     await self.comm.set_state(
-                        ICooling, CoolingState(setpoint=setpoint, power=round(duty), enabled=self._cooling_enabled)
+                        ICooling, self._cooling_state(round(duty), self._cooling_enabled, setpoint)
                     )
                     await self.comm.set_state(
                         ITemperatures,
