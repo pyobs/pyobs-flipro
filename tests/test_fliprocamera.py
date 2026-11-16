@@ -53,10 +53,10 @@ async def test_set_binning() -> None:
 
 
 @pytest.mark.asyncio
-async def test_set_cooling_requires_driver() -> None:
+async def test_cooling_hardware_requires_driver() -> None:
     camera = FliProCamera(-20.0)
     with pytest.raises(ValueError):
-        await camera.set_cooling(True, -20.0)
+        await camera._set_cooling_hardware(True, -20.0)
 
 
 @pytest.mark.asyncio
@@ -131,3 +131,68 @@ async def test_run_blocking_or_raise_reraises() -> None:
 
     with pytest.raises(ValueError):
         await camera._run_blocking_or_raise(boom)
+
+
+def make_cooling_camera(sensor: float = 5.0) -> FliProCamera:
+    """Camera with a fake driver whose sensor follows the setpoint."""
+    from unittest.mock import MagicMock
+
+    camera = FliProCamera(-20.0)
+    camera.comm.set_state = AsyncMock()  # type: ignore[method-assign]
+    state = {"setpoint": 20.0, "temp": sensor}
+
+    def set_point(value: float) -> None:
+        state["setpoint"] = value
+        state["temp"] = value + 0.5
+
+    driver = MagicMock()
+    driver.set_temperature_set_point.side_effect = set_point
+    driver.get_temperature_set_point.side_effect = lambda: state["setpoint"]
+    driver.get_cooler_duty_cycle.return_value = 30.0
+    driver.get_temperatures.side_effect = lambda: (0.0, 10.0, state["temp"])
+    camera._driver = driver
+    return camera
+
+
+@pytest.mark.asyncio
+async def test_set_cooling_queues_ramp_and_keeps_configured_setpoint() -> None:
+    camera = make_cooling_camera()
+
+    await camera.set_cooling(True, 0.0)
+
+    assert camera.cooling_ramping
+    assert camera._temp_setpoint == -20.0
+    camera._driver.set_temperature_set_point.assert_not_called()  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
+async def test_ramp_starts_at_sensor_temperature_and_steps_down() -> None:
+    camera = make_cooling_camera(sensor=5.0)
+    await camera.set_cooling(True, 2.0)
+
+    while camera.cooling_ramping:
+        await camera._cooling_tick()
+
+    values = [c.args[0] for c in camera._driver.set_temperature_set_point.call_args_list]  # type: ignore[union-attr]
+    assert values == [5.0, 4.0, 3.0, 2.0]
+    assert camera._cooling_enabled is True
+
+
+@pytest.mark.asyncio
+async def test_disable_after_cooling_warms_up_then_sets_20() -> None:
+    camera = make_cooling_camera(sensor=5.0)
+    await camera.set_cooling(True, 3.0)
+    while camera.cooling_ramping:
+        await camera._cooling_tick()
+    camera._driver.set_temperature_set_point.reset_mock()  # type: ignore[union-attr]
+
+    await camera.set_cooling(False, None)  # type: ignore[arg-type]
+    for _ in range(100):
+        if not camera.cooling_ramping:
+            break
+        await camera._cooling_tick()
+
+    values = [c.args[0] for c in camera._driver.set_temperature_set_point.call_args_list]  # type: ignore[union-attr]
+    assert values[0] == 4.0  # raised step by step first
+    assert values[-1] == 20.0
+    assert camera._cooling_enabled is False
