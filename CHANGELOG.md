@@ -9,6 +9,10 @@ Entries for releases before this file existed were generated from commit subject
 
 ## [Unreleased]
 
+- The GUI writes a FITS header into the frames it saves (it was empty). `FliProCamera` and the GUI build the header
+  cards with `make_frame_header` from pyobs-core, so key names and comments are the same everywhere. Needs pyobs-core
+  2.28.0.
+- Closing the camera warms up first (pyobs-core `CoolingRampMixin`). The time limit `cooling_close_timeout` is now estimated from the current setpoint and `cooling_rate_warm` instead of a fixed 300 s, so a deeply cooled camera is warmed up completely before it is closed. Needs pyobs-core 2.28.0.
 - Switching cooling off sets the camera to the off temperature (20 degC by default) or, if the sensor is warmer than
   that, to just above the sensor, so that the cooler does not keep cooling below ambient. A setpoint below the off
   temperature counts as cooler on, also after a restart of the module, so that switching it off warms up first.

@@ -1,14 +1,57 @@
 import asyncio
 import sys
 import time
+from datetime import UTC, datetime
+from typing import Any
 
 import qasync  # type: ignore[import-untyped]
 from astropy.io import fits
+from numpy.typing import NDArray
+from pyobs.utils.frameheader import FrameSettings, make_frame_header
 from pyobs.utils.gui.camera import BinningWidget, DataDisplayWidget, ExposeWidget, ExposureTimeWidget, ListPickerDialog
 from pyobs.utils.gui.camera.windowingwidget import WindowingWidget
 from PySide6 import QtCore, QtWidgets  # type: ignore[import-untyped]
 
 from .fliprodriver import FliProDriver  # type: ignore[import-untyped]
+
+
+def make_header(
+    driver: FliProDriver,
+    date_obs: datetime,
+    exposure_time: float,
+    window: tuple[int, int, int, int],
+    binning: tuple[int, int],
+    data: NDArray[Any],
+) -> fits.Header:
+    """Builds the FITS header for a frame, reading temperatures and cooling from the camera (blocking).
+
+    Args:
+        driver: Camera to read the settings from.
+        date_obs: UTC time the exposure was started.
+        exposure_time: Exposure time in seconds.
+        window: Left, top, width and height of the window, as passed to the camera.
+        binning: Binning in x and y.
+        data: The frame.
+
+    Returns:
+        The header.
+    """
+    dev = driver.device
+    _, temp_base, _ = driver.get_temperatures()
+    return make_frame_header(
+        FrameSettings(
+            date_obs=date_obs,
+            exposure_time=exposure_time,
+            instrument=f"{dev.friendly_name} {dev.serial_number}",
+            binning=binning,
+            window=window,
+            temperature=driver.get_sensor_temperature(),
+            base_temperature=temp_base,
+            cooler_power=driver.get_cooler_duty_cycle(),
+            setpoint=driver.get_temperature_set_point(),
+            data=data,
+        )
+    )
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -98,13 +141,17 @@ class MainWindow(QtWidgets.QMainWindow):
                 break
 
             self._expose_widget.start_exposure(self._exposure_time.value)
+            date_obs = datetime.now(UTC)
             self._driver.start_exposure()
             await loop.run_in_executor(None, self._wait_for_frame)
             data = self._driver.read_exposure(frame_size)
             self._driver.stop_exposure()
+            header = make_header(
+                self._driver, date_obs, self._exposure_time.value, (x, y, width, height), (xbin, ybin), data
+            )
 
             self._expose_widget.set_exposures_left(count - i - 1)
-            self._data_display.set_data(fits.PrimaryHDU(data))
+            self._data_display.set_data(fits.PrimaryHDU(data, header=header))
             self._refresh_temp()
 
         self._abort_event.clear()

@@ -9,7 +9,6 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
-import numpy as np
 from pyobs.images import Image
 from pyobs.interfaces import IAbortable, IBinning, ICamera, ICooling, ITemperatures, IWindow
 from pyobs.interfaces.IBinning import Binning, BinningCapabilities, BinningState
@@ -18,6 +17,7 @@ from pyobs.interfaces.IWindow import WindowCapabilities, WindowState
 from pyobs.mixins import CoolingRampMixin
 from pyobs.modules.camera.basecamera import BaseCamera
 from pyobs.utils.enums import ExposureStatus
+from pyobs.utils.frameheader import FrameSettings, make_frame_header
 
 if TYPE_CHECKING:
     from .fliprodriver import DeviceCaps, DeviceInfo, FliProDriver
@@ -334,29 +334,23 @@ class FliProCamera(CoolingRampMixin, BaseCamera, ICamera, IAbortable, IWindow, I
 
         # create FITS image and set header
         image = Image(img)
-        image.header["DATE-OBS"] = (date_obs, "Date and time of start of exposure")
-        image.header["EXPTIME"] = (exposure_time, "Exposure time [s]")
-        image.header["DET-TEMP"] = (temp, "CCD temperature [C]")
-        image.header["DET-TBAS"] = (temp_base, "Base plate temperature [C]")
-        image.header["DET-COOL"] = (cooler_duty, "Cooler power [percent]")
-        image.header["DET-TSET"] = (temp_set, "Cooler setpoint [C]")
-
-        # instrument and detector
         dev = driver.device
-        image.header["INSTRUME"] = (f"{dev.friendly_name} {dev.serial_number}", "Name of instrument")
-
-        # binning
-        image.header["XBINNING"] = image.header["DET-BIN1"] = (self._binning[0], "Binning factor used on X axis")
-        image.header["YBINNING"] = image.header["DET-BIN2"] = (self._binning[1], "Binning factor used on Y axis")
-
-        # window
-        image.header["XORGSUBF"] = (self._window[0], "Subframe origin on X axis")
-        image.header["YORGSUBF"] = (self._window[1], "Subframe origin on Y axis")
-
-        # statistics
-        image.header["DATAMIN"] = (float(np.min(img)), "Minimum data value")
-        image.header["DATAMAX"] = (float(np.max(img)), "Maximum data value")
-        image.header["DATAMEAN"] = (float(np.mean(img)), "Mean data value")
+        image.header.update(
+            make_frame_header(
+                FrameSettings(
+                    date_obs=date_obs,
+                    exposure_time=exposure_time,
+                    instrument=f"{dev.friendly_name} {dev.serial_number}",
+                    binning=self._binning,
+                    window=self._window,
+                    temperature=temp,
+                    base_temperature=temp_base,
+                    cooler_power=cooler_duty,
+                    setpoint=temp_set,
+                    data=img,
+                )
+            )
+        )
 
         # biassec/trimsec
         self.set_biassec_trimsec(image.header, *self._full_frame)
